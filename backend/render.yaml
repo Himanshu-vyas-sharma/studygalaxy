@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: studygalaxy-backend
+    runtime: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: node dist/index.js
+    disk:
+      name: data
+      mountPath: /opt/render/project/src/backend/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: PORT
+        value: "10000"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DB_PATH
+        value: /opt/render/project/src/backend/data/studygalaxy.sqlite
+      - key: CORS_ORIGIN
+        sync: false   # set to your frontend URL in Render dashboard
