@@ -56,12 +56,6 @@ export function AuthLanding() {
           >
             Log in
           </motion.button>
-          <button
-            onClick={() => setScreen('guest')}
-            className="w-full py-3 text-sm text-white/60 underline underline-offset-4"
-          >
-            Continue as guest
-          </button>
         </motion.div>
       </motion.div>
     </div>

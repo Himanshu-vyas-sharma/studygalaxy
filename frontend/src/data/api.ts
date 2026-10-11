@@ -123,7 +123,44 @@ export const api = {
       totalFocusMin: number;
       level: number;
     }>('/stats/weekly'),
+
+  startSessionWithTodos: (subjectId: string | null, plannedMin: number, intention: string, todos: string[]) =>
+    request<{ sessionId: string; serverStartTs: number; todoIds: string[] }>('/sessions/start', {
+      method: 'POST',
+      body: JSON.stringify({
+        subjectId,
+        plannedMin,
+        intention: intention || undefined,
+        todos: todos.length ? todos.map(text => ({ text })) : undefined,
+      }),
+    }),
+  completeSessionWithTodos: (sessionId: string, doneTodoIds: string[]) =>
+    request<{ ok: true; actualMin: number }>('/sessions/complete', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId, doneTodoIds }),
+    }),
+
+  listNotes: () => request<Note[]>('/notes'),
+  createNote: (body: { subjectId: string | null; title: string; strokes: Stroke[] }) =>
+    request<Note>('/notes', { method: 'POST', body: JSON.stringify(body) }),
+  updateNote: (id: string, body: { title?: string; strokes?: Stroke[] }) =>
+    request<{ ok: true }>(`/notes/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
 };
+
+export interface Stroke {
+  color: string;
+  width: number;
+  erase?: boolean;
+  points: [number, number][];
+}
+export interface Note {
+  id: string;
+  subjectId: string | null;
+  title: string;
+  strokes: Stroke[];
+  createdAt: number;
+  updatedAt: number;
+}
 
 export function storeToken(jwt: string) {
   localStorage.setItem('sg.jwt', jwt);

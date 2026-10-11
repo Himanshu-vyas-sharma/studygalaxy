@@ -14,6 +14,10 @@ import { GalaxyScreen } from './features/galaxy/GalaxyScreen';
 import { CirclesScreen } from './features/circles/CirclesScreen';
 import { StatsScreen } from './features/stats/StatsScreen';
 import { PrivacyScreen } from './features/legal/PrivacyScreen';
+import { SessionSetup } from './features/timer/SessionSetup';
+import { SubjectPicker } from './features/subjects/SubjectPicker';
+import { NotesScreen } from './features/notes/NotesScreen';
+import { NoteCanvas } from './features/notes/NoteCanvas';
 
 export function App() {
   const screen = useStore(s => s.screen);
@@ -102,6 +106,10 @@ export function App() {
           {screen === 'circles' && <CirclesScreen />}
           {screen === 'stats' && <StatsScreen />}
           {screen === 'privacy' && <PrivacyScreen />}
+          {screen === 'sessionSetup' && <SessionSetup />}
+          {screen === 'subjectPicker' && <SubjectPicker />}
+          {screen === 'notes' && <NotesScreen />}
+          {screen === 'noteCanvas' && <NoteCanvas />}
         </motion.div>
       </AnimatePresence>
     </>

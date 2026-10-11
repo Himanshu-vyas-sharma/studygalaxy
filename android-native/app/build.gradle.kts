@@ -14,17 +14,26 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "1.0.0"
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = file("../keystore/studygalaxy-release.jks")
+            storePassword = "StudyGalaxy2026!"
+            keyAlias = "studygalaxy"
+            keyPassword = "StudyGalaxy2026!"
+        }
     }
 
     buildTypes {
         debug {
-            // Default API base; override in app at runtime if needed
             buildConfigField("String", "API_BASE", "\"http://10.0.2.2:3000\"")
         }
         release {
             isMinifyEnabled = false
             buildConfigField("String", "API_BASE", "\"https://studygalaxy-backend.onrender.com\"")
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
