@@ -9,6 +9,7 @@ import { sessionsRouter } from './sessions/routes.js';
 import { circlesRouter } from './circles/routes.js';
 import { galaxyRouter } from './galaxy/routes.js';
 import { statsRouter } from './stats/routes.js';
+import { profileRouter } from './profile/routes.js';
 import { attachWs } from './ws/server.js';
 
 initSchema();
@@ -25,6 +26,7 @@ app.use('/sessions', sessionsRouter);
 app.use('/circles', circlesRouter);
 app.use('/galaxy', galaxyRouter);
 app.use('/stats', statsRouter);
+app.use('/profile', profileRouter);
 
 const httpServer = createServer(app);
 attachWs(httpServer);

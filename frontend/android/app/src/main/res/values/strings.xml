@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">StudyGalaxy</string>
+    <string name="title_activity_main">StudyGalaxy</string>
+    <string name="package_name">app.studygalaxy</string>
+    <string name="custom_url_scheme">app.studygalaxy</string>
+</resources>

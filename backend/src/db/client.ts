@@ -85,4 +85,11 @@ export function initSchema() {
   if (!columnExists('users', 'password_hash'))
     db.exec('ALTER TABLE users ADD COLUMN password_hash TEXT');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users(phone_number) WHERE phone_number IS NOT NULL');
+
+  // Onboarding answers
+  if (!columnExists('users', 'exam_goal')) db.exec('ALTER TABLE users ADD COLUMN exam_goal TEXT');
+  if (!columnExists('users', 'daily_hours')) db.exec('ALTER TABLE users ADD COLUMN daily_hours INTEGER');
+  if (!columnExists('users', 'top_subjects')) db.exec('ALTER TABLE users ADD COLUMN top_subjects TEXT'); // JSON array
+  if (!columnExists('users', 'study_time')) db.exec('ALTER TABLE users ADD COLUMN study_time TEXT');
+  if (!columnExists('users', 'biggest_distraction')) db.exec('ALTER TABLE users ADD COLUMN biggest_distraction TEXT');
 }
