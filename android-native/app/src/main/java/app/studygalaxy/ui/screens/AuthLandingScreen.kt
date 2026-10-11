@@ -26,8 +26,7 @@ import app.studygalaxy.ui.theme.*
 @Composable
 fun AuthLandingScreen(
     onCreateAccount: () -> Unit,
-    onLogin: () -> Unit,
-    onGuest: () -> Unit
+    onLogin: () -> Unit
 ) {
     val infinite = rememberInfiniteTransition(label = "orbFloat")
     val float by infinite.animateFloat(
@@ -94,9 +93,6 @@ fun AuthLandingScreen(
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = White5)
             ) { Text("Log in", color = White90, fontSize = 16.sp) }
-
-            Spacer(Modifier.height(6.dp))
-            TextButton(onClick = onGuest) { Text("Continue as guest", color = White50, fontSize = 13.sp) }
         }
     }
 }

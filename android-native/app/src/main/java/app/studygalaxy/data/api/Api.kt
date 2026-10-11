@@ -14,9 +14,17 @@ interface Api {
     @GET("/auth/me")            suspend fun me(): User
 
     @GET("/galaxy")                                   suspend fun galaxy(): Galaxy
-    @POST("/sessions/start")    suspend fun startSession(@Body req: StartSessionReq): StartSessionReply
-    @POST("/sessions/complete") suspend fun completeSession(@Body req: CompleteSessionReq): CompleteSessionReply
+    @GET("/subjects")                                 suspend fun subjects(): List<Planet>
+    @POST("/subjects")          suspend fun createSubject(@Body req: CreateSubjectReq): Planet
+    @POST("/sessions/start")    suspend fun startSession(@Body req: StartSessionWithTodosReq): StartSessionWithTodosReply
+    @POST("/sessions/complete") suspend fun completeSession(@Body req: CompleteSessionWithTodosReq): CompleteSessionReply
     @POST("/sessions/break")    suspend fun breakSession(@Body req: BreakSessionReq): SimpleOk
+    @GET("/sessions/{id}/todos") suspend fun sessionTodos(@Path("id") id: String): List<Todo>
+
+    @GET("/notes")                                    suspend fun notes(): List<Note>
+    @POST("/notes")             suspend fun createNote(@Body req: CreateNoteReq): Note
+    @retrofit2.http.PUT("/notes/{id}") suspend fun updateNote(@Path("id") id: String, @Body req: UpdateNoteReq): SimpleOk
+    @retrofit2.http.DELETE("/notes/{id}") suspend fun deleteNote(@Path("id") id: String): SimpleOk
 
     @GET("/circles")                                  suspend fun circles(): List<Circle>
     @POST("/circles")           suspend fun createCircle(@Body req: CreateCircleReq): Circle

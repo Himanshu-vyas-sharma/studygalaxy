@@ -53,3 +53,31 @@ data class User(
     val studyTime: String? = null,
     val biggestDistraction: String? = null
 )
+
+@Serializable data class TodoInput(val text: String)
+@Serializable data class StartSessionWithTodosReq(
+    val subjectId: String? = null,
+    val plannedMin: Int,
+    val intention: String? = null,
+    val todos: List<TodoInput>? = null
+)
+@Serializable data class StartSessionWithTodosReply(val sessionId: String, val serverStartTs: Long, val todoIds: List<String> = emptyList())
+@Serializable data class CompleteSessionWithTodosReq(
+    val sessionId: String,
+    val selfRating: Int? = null,
+    val doneTodoIds: List<String>? = null
+)
+@Serializable data class Todo(val id: String, val text: String, val done: Boolean, val ord: Int)
+
+@Serializable data class StrokeDto(val color: String, val width: Float, val erase: Boolean = false, val points: List<List<Float>>)
+@Serializable data class Note(
+    val id: String,
+    val subjectId: String? = null,
+    val title: String = "",
+    val strokes: List<StrokeDto> = emptyList(),
+    val createdAt: Long,
+    val updatedAt: Long
+)
+@Serializable data class CreateNoteReq(val subjectId: String? = null, val title: String? = null, val strokes: List<StrokeDto>? = null)
+@Serializable data class UpdateNoteReq(val title: String? = null, val subjectId: String? = null, val strokes: List<StrokeDto>? = null)
+@Serializable data class CreateSubjectReq(val name: String, val color: String)

@@ -3,8 +3,14 @@ package app.studygalaxy.ui.screens
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,9 +28,13 @@ import androidx.lifecycle.LifecycleEventObserver
 import app.studygalaxy.ui.theme.*
 import kotlinx.coroutines.delay
 
+data class TimerTodo(val id: String, val text: String, val done: Boolean)
+
 @Composable
 fun TimerScreen(
     endsAtMs: Long,
+    initialTodos: List<TimerTodo>,
+    onToggleTodo: (String) -> Unit,
     onComplete: suspend () -> Unit,
     onBreak: suspend (reason: String) -> Unit,
     onDone: () -> Unit
@@ -34,6 +44,7 @@ fun TimerScreen(
     var warningVisible by remember { mutableStateOf(false) }
     var brokenMessage by remember { mutableStateOf<String?>(null) }
     var leftAt by remember { mutableStateOf<Long?>(null) }
+    val todos = initialTodos
 
     // Observe lifecycle to detect leaving the app
     val owner = LocalLifecycleOwner.current
@@ -87,14 +98,24 @@ fun TimerScreen(
     when {
         completed -> StarBornView()
         brokenMessage != null -> BlackHoleView(brokenMessage!!)
-        else -> TimerView(remaining = remaining, warning = warningVisible, onGiveUp = {
-            brokenMessage = "You gave up this session."
-        })
+        else -> TimerView(
+            remaining = remaining,
+            warning = warningVisible,
+            todos = todos,
+            onToggleTodo = onToggleTodo,
+            onGiveUp = { brokenMessage = "You gave up this session." }
+        )
     }
 }
 
 @Composable
-private fun TimerView(remaining: Long, warning: Boolean, onGiveUp: () -> Unit) {
+private fun TimerView(
+    remaining: Long,
+    warning: Boolean,
+    todos: List<TimerTodo>,
+    onToggleTodo: (String) -> Unit,
+    onGiveUp: () -> Unit
+) {
     val mins = (remaining.coerceAtLeast(0) / 60000).toInt()
     val secs = ((remaining.coerceAtLeast(0) / 1000) % 60).toInt()
     val text = "%02d:%02d".format(mins, secs)
@@ -128,10 +149,49 @@ private fun TimerView(remaining: Long, warning: Boolean, onGiveUp: () -> Unit) {
             Text(text, style = MaterialTheme.typography.displayLarge, color = White90)
         }
         if (warning) {
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
             Text("Come back! Your star is about to collapse…", color = Color(0xFFFCA5A5), fontSize = 13.sp)
         }
-        Spacer(Modifier.height(32.dp))
+
+        Spacer(Modifier.height(24.dp))
+
+        if (todos.isNotEmpty()) {
+            Text("CHECK OFF AS YOU GO", color = White50, fontSize = 10.sp, letterSpacing = 2.sp)
+            Spacer(Modifier.height(10.dp))
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp).heightIn(max = 220.dp).verticalScroll(rememberScrollState())
+            ) {
+                todos.forEach { t ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .background(White5, RoundedCornerShape(12.dp))
+                            .border(1.dp, if (t.done) Violet500.copy(alpha = 0.6f) else White10, RoundedCornerShape(12.dp))
+                            .clickable { onToggleTodo(t.id) }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier
+                                .size(18.dp)
+                                .background(if (t.done) Violet500 else Color.Transparent, CircleShape)
+                                .border(1.5.dp, if (t.done) Violet500 else White30, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) { if (t.done) Text("✓", color = White90, fontSize = 11.sp) }
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            t.text,
+                            color = if (t.done) White50 else White90,
+                            fontSize = 13.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
         TextButton(onClick = onGiveUp) { Text("Give up", color = White30, fontSize = 11.sp) }
     }
 }

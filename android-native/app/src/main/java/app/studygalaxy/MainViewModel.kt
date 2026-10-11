@@ -11,13 +11,19 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
-enum class Screen { Loading, Onboarding, AuthLanding, Signup, Login, NamePicker, Home, Timer, Galaxy, Circles, Stats, Privacy }
+enum class Screen { Loading, Onboarding, AuthLanding, Signup, Login, NamePicker, Home, SubjectPicker, SessionSetup, Timer, Galaxy, Circles, Notes, NoteCanvas, Stats, Privacy }
 
 data class AppState(
     val screen: Screen = Screen.Loading,
     val user: User? = null,
+    val subjects: List<Planet> = emptyList(),
+    val activeSubjectId: String? = null,
     val activeSessionId: String? = null,
     val activeSessionEndsAtMs: Long? = null,
+    val activeTodos: List<app.studygalaxy.ui.screens.TimerTodo> = emptyList(),
+    val editingNoteId: String? = null,
+    val editingNoteTitle: String = "",
+    val editingNoteStrokes: List<app.studygalaxy.data.model.StrokeDto> = emptyList(),
     val error: String? = null
 )
 
@@ -35,7 +41,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (jwt != null) {
             try {
                 val me = api.me()
-                _state.value = _state.value.copy(user = me, screen = if (nameClaimed()) Screen.Home else Screen.NamePicker)
+                _state.value = _state.value.copy(
+                    user = me,
+                    screen = if (nameClaimed()) Screen.Home else Screen.NamePicker
+                )
+                reloadSubjects()
+                scheduleReminderFromProfile()
                 return@launch
             } catch (_: Throwable) {
                 TokenStore.setJwt(ctx, null)
@@ -44,6 +55,35 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val onboarded = TokenStore.isOnboarded(ctx)
         _state.value = _state.value.copy(screen = if (onboarded) Screen.AuthLanding else Screen.Onboarding)
     }
+
+    private fun reloadSubjects() = viewModelScope.launch {
+        try {
+            val subs = api.subjects()
+            val currentActive = _state.value.activeSubjectId
+            val keep = if (currentActive != null && subs.any { it.id == currentActive }) currentActive else subs.firstOrNull()?.id
+            _state.value = _state.value.copy(subjects = subs, activeSubjectId = keep)
+        } catch (_: Throwable) {}
+    }
+
+    private fun scheduleReminderFromProfile() = viewModelScope.launch {
+        val json = TokenStore.getOnboardingJson(ctx) ?: return@launch
+        val time = Regex("\"studyTime\"\\s*:\\s*\"(\\w+)\"").find(json)?.groupValues?.get(1)
+        app.studygalaxy.notifications.StudyReminder.scheduleDaily(ctx, time)
+    }
+
+    fun pickSubject(id: String) {
+        _state.value = _state.value.copy(activeSubjectId = id)
+    }
+
+    suspend fun createSubject(name: String, color: String): Planet? {
+        return try {
+            val created = api.createSubject(CreateSubjectReq(name, color))
+            reloadSubjects().join()
+            created
+        } catch (_: Throwable) { null }
+    }
+
+    fun refreshSubjects() = reloadSubjects()
 
     fun saveOnboarding(answers: app.studygalaxy.ui.screens.OnboardingAnswers) = viewModelScope.launch {
         TokenStore.saveOnboarding(ctx, answers.toJson())
@@ -76,6 +116,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             TokenStore.setJwt(ctx, reply.jwt)
             _state.value = _state.value.copy(user = reply.user, screen = Screen.NamePicker)
             syncPendingProfile()
+            reloadSubjects()
+            scheduleReminderFromProfile()
             onResult(null)
         } catch (e: Throwable) {
             onResult(mapAuthError(e))
@@ -90,23 +132,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             TokenStore.markNameClaimed(ctx)
             _state.value = _state.value.copy(user = reply.user, screen = Screen.Home)
             syncPendingProfile()
+            reloadSubjects()
+            scheduleReminderFromProfile()
             onResult(null)
         } catch (_: Throwable) {
             onResult("Wrong phone or password")
         }
     }
 
-    fun guest() = viewModelScope.launch {
-        val device = TokenStore.getOrCreateDeviceId(ctx)
-        try {
-            val reply = api.anonymous(AnonymousReq(device))
-            TokenStore.setJwt(ctx, reply.jwt)
-            _state.value = _state.value.copy(user = reply.user, screen = Screen.NamePicker)
-            syncPendingProfile()
-        } catch (_: Throwable) {
-            _state.value = _state.value.copy(screen = Screen.AuthLanding)
-        }
-    }
 
     fun claimName(name: String, onResult: (Boolean) -> Unit) = viewModelScope.launch {
         try {
@@ -118,30 +151,83 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         } catch (_: Throwable) { onResult(false) }
     }
 
-    fun startFocus(plannedMin: Int, intention: String) = viewModelScope.launch {
+    fun startFocusWithTodos(plannedMin: Int, intention: String, todos: List<String>) = viewModelScope.launch {
         try {
-            val reply = api.startSession(StartSessionReq(null, plannedMin, intention.ifBlank { null }))
+            val subjectId = _state.value.activeSubjectId
+            val reply = api.startSession(StartSessionWithTodosReq(
+                subjectId = subjectId,
+                plannedMin = plannedMin,
+                intention = intention.ifBlank { null },
+                todos = if (todos.isEmpty()) null else todos.map { TodoInput(it) }
+            ))
+            val timerTodos = reply.todoIds.zip(todos).map { (id, text) ->
+                app.studygalaxy.ui.screens.TimerTodo(id = id, text = text, done = false)
+            }
             _state.value = _state.value.copy(
                 activeSessionId = reply.sessionId,
                 activeSessionEndsAtMs = reply.serverStartTs + plannedMin * 60_000L,
+                activeTodos = timerTodos,
                 screen = Screen.Timer
             )
         } catch (_: Throwable) { /* ignore for MVP */ }
     }
 
+    fun toggleTodo(id: String) {
+        _state.value = _state.value.copy(
+            activeTodos = _state.value.activeTodos.map {
+                if (it.id == id) it.copy(done = !it.done) else it
+            }
+        )
+    }
+
     suspend fun completeSession() {
         val id = _state.value.activeSessionId ?: return
+        val done = _state.value.activeTodos.filter { it.done }.map { it.id }
         try {
-            api.completeSession(CompleteSessionReq(id, 4))
+            api.completeSession(CompleteSessionWithTodosReq(id, selfRating = null, doneTodoIds = done))
             val me = api.me()
-            _state.value = _state.value.copy(user = me, activeSessionId = null, activeSessionEndsAtMs = null)
+            _state.value = _state.value.copy(
+                user = me, activeSessionId = null, activeSessionEndsAtMs = null, activeTodos = emptyList()
+            )
+            reloadSubjects()
         } catch (_: Throwable) {}
     }
 
     suspend fun breakSession() {
         val id = _state.value.activeSessionId ?: return
         try { api.breakSession(BreakSessionReq(id)) } catch (_: Throwable) {}
-        _state.value = _state.value.copy(activeSessionId = null, activeSessionEndsAtMs = null)
+        _state.value = _state.value.copy(
+            activeSessionId = null, activeSessionEndsAtMs = null, activeTodos = emptyList()
+        )
+    }
+
+    suspend fun loadNotes() = runCatching { api.notes() }.getOrDefault(emptyList())
+
+    fun openNewNote() {
+        _state.value = _state.value.copy(
+            editingNoteId = null, editingNoteTitle = "", editingNoteStrokes = emptyList(),
+            screen = Screen.NoteCanvas
+        )
+    }
+
+    fun openExistingNote(note: app.studygalaxy.data.model.Note) {
+        _state.value = _state.value.copy(
+            editingNoteId = note.id, editingNoteTitle = note.title, editingNoteStrokes = note.strokes,
+            screen = Screen.NoteCanvas
+        )
+    }
+
+    suspend fun saveNote(title: String, strokes: List<app.studygalaxy.data.model.StrokeDto>): Boolean {
+        val id = _state.value.editingNoteId
+        val subjectId = _state.value.activeSubjectId
+        return try {
+            if (id == null) {
+                api.createNote(CreateNoteReq(subjectId = subjectId, title = title, strokes = strokes))
+            } else {
+                api.updateNote(id, UpdateNoteReq(title = title, strokes = strokes))
+            }
+            true
+        } catch (_: Throwable) { false }
     }
 
     suspend fun loadGalaxy(): Galaxy? = runCatching { api.galaxy() }.getOrNull()

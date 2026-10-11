@@ -52,8 +52,7 @@ class MainActivity : ComponentActivity() {
                             Screen.Onboarding -> OnboardingScreen(onDone = { vm.saveOnboarding(it) })
                             Screen.AuthLanding -> AuthLandingScreen(
                                 onCreateAccount = { vm.go(Screen.Signup) },
-                                onLogin = { vm.go(Screen.Login) },
-                                onGuest = { vm.guest() }
+                                onLogin = { vm.go(Screen.Login) }
                             )
                             Screen.Signup -> SignupScreen(
                                 onSignup = { phone, pw ->
@@ -91,11 +90,32 @@ class MainActivity : ComponentActivity() {
                                 val u = state.user
                                 if (u == null) LoadingView() else HomeScreen(
                                     user = u,
-                                    onStartFocus = { min, intention -> vm.startFocus(min, intention) },
+                                    subjects = state.subjects,
+                                    activeSubjectId = state.activeSubjectId,
+                                    onPickSubject = { vm.pickSubject(it) },
+                                    onCreateSubject = { vm.go(Screen.SubjectPicker) },
+                                    onStartFocus = { vm.go(Screen.SessionSetup) },
                                     onOpenGalaxy = { vm.go(Screen.Galaxy) },
                                     onOpenCircles = { vm.go(Screen.Circles) },
                                     onOpenStats = { vm.go(Screen.Stats) },
-                                    onOpenPrivacy = { vm.go(Screen.Privacy) }
+                                    onOpenNotes = { vm.go(Screen.Notes) }
+                                )
+                            }
+                            Screen.SubjectPicker -> SubjectPickerScreen(
+                                subjects = state.subjects,
+                                onPick = { id -> vm.pickSubject(id); vm.go(Screen.Home) },
+                                onCreate = { name, color -> vm.createSubject(name, color) },
+                                onBack = { vm.go(Screen.Home) }
+                            )
+                            Screen.SessionSetup -> {
+                                val activeSubj = state.subjects.firstOrNull { it.id == state.activeSubjectId }
+                                SessionSetupScreen(
+                                    subject = activeSubj,
+                                    onPickSubject = { vm.go(Screen.SubjectPicker) },
+                                    onBack = { vm.go(Screen.Home) },
+                                    onStart = { min, intention, todos ->
+                                        vm.startFocusWithTodos(min, intention, todos)
+                                    }
                                 )
                             }
                             Screen.Timer -> {
@@ -105,11 +125,25 @@ class MainActivity : ComponentActivity() {
                                     LaunchedEffect(Unit) { vm.go(Screen.Home) }
                                 } else TimerScreen(
                                     endsAtMs = endsAt,
+                                    initialTodos = state.activeTodos,
+                                    onToggleTodo = { vm.toggleTodo(it) },
                                     onComplete = { vm.completeSession() },
                                     onBreak = { _ -> vm.breakSession() },
                                     onDone = { vm.go(if (vm.state.value.user != null) Screen.Galaxy else Screen.Home) }
                                 )
                             }
+                            Screen.Notes -> NotesListScreen(
+                                load = { vm.loadNotes() },
+                                onOpen = { vm.openExistingNote(it) },
+                                onCreate = { vm.openNewNote() },
+                                onBack = { vm.go(Screen.Home) }
+                            )
+                            Screen.NoteCanvas -> NoteCanvasScreen(
+                                initialStrokes = state.editingNoteStrokes,
+                                initialTitle = state.editingNoteTitle,
+                                onSave = { title, strokes -> vm.saveNote(title, strokes) },
+                                onBack = { vm.go(Screen.Notes) }
+                            )
                             Screen.Galaxy -> GalaxyScreen(
                                 loadGalaxy = { vm.loadGalaxy() },
                                 onBack = { vm.go(Screen.Home) }
@@ -125,6 +159,7 @@ class MainActivity : ComponentActivity() {
                                 onBack = { vm.go(Screen.Home) }
                             )
                             Screen.Privacy -> PrivacyScreen(onBack = { vm.go(Screen.Home) })
+                            else -> LoadingView()
                         }
                     }
                 }

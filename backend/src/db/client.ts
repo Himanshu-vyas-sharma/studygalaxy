@@ -89,7 +89,33 @@ export function initSchema() {
   // Onboarding answers
   if (!columnExists('users', 'exam_goal')) db.exec('ALTER TABLE users ADD COLUMN exam_goal TEXT');
   if (!columnExists('users', 'daily_hours')) db.exec('ALTER TABLE users ADD COLUMN daily_hours INTEGER');
-  if (!columnExists('users', 'top_subjects')) db.exec('ALTER TABLE users ADD COLUMN top_subjects TEXT'); // JSON array
+  if (!columnExists('users', 'top_subjects')) db.exec('ALTER TABLE users ADD COLUMN top_subjects TEXT');
   if (!columnExists('users', 'study_time')) db.exec('ALTER TABLE users ADD COLUMN study_time TEXT');
   if (!columnExists('users', 'biggest_distraction')) db.exec('ALTER TABLE users ADD COLUMN biggest_distraction TEXT');
+
+  // Notes
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS notes (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      subject_id TEXT REFERENCES subjects(id) ON DELETE SET NULL,
+      title TEXT NOT NULL DEFAULT '',
+      strokes_json TEXT NOT NULL DEFAULT '[]',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_notes_user ON notes(user_id, updated_at DESC);
+  `);
+
+  // Session-linked todos
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS todos (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      text TEXT NOT NULL,
+      done INTEGER NOT NULL DEFAULT 0,
+      ord INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_todos_session ON todos(session_id, ord);
+  `);
 }
