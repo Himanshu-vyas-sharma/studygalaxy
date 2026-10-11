@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Avatar } from '../../components/Avatar';
+import { AnimatedNumber } from '../../components/AnimatedNumber';
 import { useStore } from '../../store';
 import { api } from '../../data/api';
 
@@ -78,29 +79,61 @@ export function HomeScreen() {
       </div>
 
       {/* Total hours vanity metric */}
-      <div className="px-5 pt-6 text-center">
+      <motion.div
+        initial={{ opacity: 0, y: 20, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ delay: 0.2, duration: 0.6 }}
+        className="px-5 pt-6 text-center"
+      >
         <div className="text-xs tracking-widest text-white/40 uppercase">Total focused</div>
         <div className="font-display text-6xl gradient-text leading-none mt-1">
-          {totalHours}<span className="text-3xl text-white/60">h {totalRemMin}m</span>
+          <AnimatedNumber value={totalHours} />
+          <span className="text-3xl text-white/60">h <AnimatedNumber value={totalRemMin} />m</span>
         </div>
-      </div>
+      </motion.div>
 
       {/* Hero portal */}
       <div className="flex-1 flex flex-col items-center justify-center px-5 relative">
-        <motion.button
-          onClick={startFocus}
-          disabled={starting}
-          whileTap={{ scale: 0.94 }}
-          animate={{ scale: [1, 1.04, 1] }}
-          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-          className="glow-portal relative w-56 h-56 rounded-full bg-gradient-to-br from-violet-600 via-fuchsia-600 to-indigo-700 flex flex-col items-center justify-center text-center active:brightness-110 disabled:opacity-50"
-        >
-          <div className="absolute inset-3 rounded-full border border-white/20" />
-          <div className="absolute inset-6 rounded-full border border-white/10" />
-          <div className="text-xs tracking-[0.3em] text-white/70 uppercase">Tap to</div>
-          <div className="font-display text-3xl mt-1">Focus</div>
-          <div className="text-sm text-white/70 mt-1">{chosenMin} min</div>
-        </motion.button>
+        <div className="relative">
+          {/* Orbiting dots around portal */}
+          {[0, 1, 2].map(i => (
+            <motion.div
+              key={i}
+              className="absolute inset-0 flex items-center justify-center pointer-events-none"
+              animate={{ rotate: 360 }}
+              transition={{ duration: 10 + i * 4, repeat: Infinity, ease: 'linear' }}
+            >
+              <div
+                className="absolute rounded-full"
+                style={{
+                  width: 6 - i,
+                  height: 6 - i,
+                  background: ['#C4B5FD', '#F472B6', '#FBBF24'][i],
+                  transform: `translateX(${130 + i * 8}px)`,
+                  boxShadow: `0 0 8px ${['#C4B5FD', '#F472B6', '#FBBF24'][i]}`,
+                }}
+              />
+            </motion.div>
+          ))}
+          <motion.button
+            onClick={startFocus}
+            disabled={starting}
+            whileTap={{ scale: 0.94 }}
+            animate={{ scale: [1, 1.04, 1] }}
+            transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+            className="glow-portal relative w-56 h-56 rounded-full bg-gradient-to-br from-violet-600 via-fuchsia-600 to-indigo-700 flex flex-col items-center justify-center text-center active:brightness-110 disabled:opacity-50"
+          >
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
+              className="absolute inset-3 rounded-full border border-dashed border-white/25"
+            />
+            <div className="absolute inset-6 rounded-full border border-white/10" />
+            <div className="text-xs tracking-[0.3em] text-white/70 uppercase">Tap to</div>
+            <div className="font-display text-3xl mt-1">Focus</div>
+            <div className="text-sm text-white/70 mt-1">{chosenMin} min</div>
+          </motion.button>
+        </div>
 
         {/* Duration quick picks */}
         <div className="flex gap-2 mt-6">

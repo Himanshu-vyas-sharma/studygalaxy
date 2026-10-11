@@ -1,7 +1,19 @@
 import { create } from 'zustand';
 import type { User } from './data/api';
 
-type Screen = 'loading' | 'namePicker' | 'home' | 'timer' | 'galaxy' | 'circles' | 'stats' | 'privacy';
+type Screen =
+  | 'loading'
+  | 'authLanding'
+  | 'signup'
+  | 'login'
+  | 'guest'
+  | 'namePicker'
+  | 'home'
+  | 'timer'
+  | 'galaxy'
+  | 'circles'
+  | 'stats'
+  | 'privacy';
 
 interface Store {
   user: User | null;

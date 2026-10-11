@@ -1,0 +1,69 @@
+import { motion } from 'framer-motion';
+import { useStore } from '../../store';
+
+export function AuthLanding() {
+  const setScreen = useStore(s => s.setScreen);
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 relative">
+      <motion.div
+        initial={{ opacity: 0, y: 30, scale: 0.8 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.9, ease: 'easeOut' }}
+        className="w-full max-w-sm text-center"
+      >
+        <motion.div
+          animate={{ y: [0, -8, 0], rotate: [0, 3, 0] }}
+          transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+          className="w-28 h-28 mx-auto rounded-full bg-gradient-to-br from-violet-500 via-fuchsia-500 to-indigo-600 glow-portal mb-8"
+        />
+        <p className="text-xs tracking-[0.5em] text-violet-300/70 uppercase mb-3">Welcome to</p>
+        <motion.h1
+          initial={{ letterSpacing: '0.3em', opacity: 0 }}
+          animate={{ letterSpacing: '0em', opacity: 1 }}
+          transition={{ delay: 0.4, duration: 1 }}
+          className="font-display text-6xl gradient-text mb-4"
+        >
+          StudyGalaxy
+        </motion.h1>
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1 }}
+          className="text-white/70 mb-10"
+        >
+          Focus. Grow your galaxy. Study with friends.
+        </motion.p>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1.3 }}
+          className="space-y-3"
+        >
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setScreen('signup')}
+            className="w-full py-4 rounded-2xl font-semibold text-lg bg-gradient-to-r from-violet-500 to-fuchsia-500 shadow-lg shadow-violet-500/30"
+          >
+            Create account
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setScreen('login')}
+            className="w-full py-4 rounded-2xl font-semibold text-lg bg-white/10 border border-white/15"
+          >
+            Log in
+          </motion.button>
+          <button
+            onClick={() => setScreen('guest')}
+            className="w-full py-3 text-sm text-white/60 underline underline-offset-4"
+          >
+            Continue as guest
+          </button>
+        </motion.div>
+      </motion.div>
+    </div>
+  );
+}

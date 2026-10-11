@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { api } from '../../data/api';
 import { useStore } from '../../store';
+import { Confetti } from '../../components/Confetti';
 
 function fmt(ms: number) {
   if (ms < 0) ms = 0;
@@ -113,16 +114,57 @@ export function TimerScreen() {
 
   if (completed) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6">
-        <motion.div
-          initial={{ scale: 0.4, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ type: 'spring', stiffness: 150 }}
-          className="w-32 h-32 rounded-full bg-gradient-to-br from-amber-300 via-fuchsia-400 to-violet-500 glow-portal"
-        />
-        <h2 className="font-display text-4xl mt-8 gradient-text">A new star is born</h2>
-        <p className="text-white/70 mt-2">Your galaxy just grew.</p>
-      </div>
+      <>
+        <Confetti fire />
+        <div className="min-h-screen flex flex-col items-center justify-center p-6">
+          <motion.div
+            initial={{ scale: 0.2, opacity: 0, rotate: -30 }}
+            animate={{ scale: 1, opacity: 1, rotate: 0 }}
+            transition={{ type: 'spring', stiffness: 160, damping: 12 }}
+            className="relative w-40 h-40"
+          >
+            <motion.div
+              animate={{ scale: [1, 1.15, 1] }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+              className="absolute inset-0 rounded-full bg-gradient-to-br from-amber-300 via-fuchsia-400 to-violet-500 glow-portal"
+            />
+            {[0, 1, 2, 3].map(i => (
+              <motion.div
+                key={i}
+                animate={{ rotate: 360 }}
+                transition={{ duration: 8 + i * 2, repeat: Infinity, ease: 'linear' }}
+                className="absolute inset-0 flex items-center justify-center"
+              >
+                <div
+                  className="absolute rounded-full bg-white"
+                  style={{
+                    width: 4,
+                    height: 4,
+                    transform: `translateX(${80 + i * 10}px)`,
+                    opacity: 0.6 - i * 0.1,
+                  }}
+                />
+              </motion.div>
+            ))}
+          </motion.div>
+          <motion.h2
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="font-display text-4xl mt-10 gradient-text"
+          >
+            A new star is born
+          </motion.h2>
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.7 }}
+            className="text-white/70 mt-2"
+          >
+            Your galaxy just grew.
+          </motion.p>
+        </div>
+      </>
     );
   }
 

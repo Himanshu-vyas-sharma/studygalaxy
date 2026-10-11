@@ -24,6 +24,7 @@ export interface User {
   level: number;
   totalFocusMin: number;
   streakDays: number;
+  phoneNumber: string | null;
 }
 
 export interface Planet {
@@ -53,12 +54,32 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ deviceId }),
     }),
+  signup: (phoneNumber: string, password: string, deviceId: string, cosmicName?: string) =>
+    request<{ jwt: string; user: User }>('/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify({ phoneNumber, password, deviceId, cosmicName }),
+    }),
+  login: (phoneNumber: string, password: string, deviceId: string) =>
+    request<{ jwt: string; user: User }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ phoneNumber, password, deviceId }),
+    }),
+  attachPhone: (phoneNumber: string, password: string) =>
+    request<{ ok: true }>('/auth/attach-phone', {
+      method: 'POST',
+      body: JSON.stringify({ phoneNumber, password }),
+    }),
   claimName: (name: string) =>
     request<{ ok: true; cosmicName: string }>('/auth/claim-name', {
       method: 'POST',
       body: JSON.stringify({ name }),
     }),
   me: () => request<User>('/auth/me'),
+
+  logout: () => {
+    localStorage.removeItem('sg.jwt');
+    localStorage.removeItem('sg.nameClaimed');
+  },
 
   listSubjects: () => request<Planet[]>('/subjects'),
   createSubject: (name: string, color: string) =>

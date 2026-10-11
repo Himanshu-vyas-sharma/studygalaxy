@@ -9,6 +9,11 @@ export const db = new Database(config.dbPath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
+function columnExists(table: string, col: string): boolean {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as any[];
+  return rows.some(r => r.name === col);
+}
+
 export function initSchema() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -73,4 +78,11 @@ export function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_events_circle ON circle_events(circle_id, created_at DESC);
   `);
+
+  // Migrations for new auth columns (safe to run repeatedly)
+  if (!columnExists('users', 'phone_number'))
+    db.exec('ALTER TABLE users ADD COLUMN phone_number TEXT');
+  if (!columnExists('users', 'password_hash'))
+    db.exec('ALTER TABLE users ADD COLUMN password_hash TEXT');
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users(phone_number) WHERE phone_number IS NOT NULL');
 }

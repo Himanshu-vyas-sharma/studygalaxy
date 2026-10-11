@@ -15,6 +15,8 @@ export function PrivacyScreen() {
 
         <h2 className="font-semibold text-white mt-4">What we store</h2>
         <ul className="list-disc pl-5 space-y-1">
+          <li>Your phone number (if you created an account) — used only as your login ID. We never send SMS.</li>
+          <li>Your password, stored as a one-way scrypt hash. We cannot read your password even if we wanted to.</li>
           <li>A random device identifier generated on your phone so your galaxy follows you between sessions.</li>
           <li>Your cosmic name and the sessions, subjects, and circles you create.</li>
           <li>Session timestamps and durations (needed to grow your galaxy and streaks).</li>
@@ -22,9 +24,10 @@ export function PrivacyScreen() {
 
         <h2 className="font-semibold text-white mt-4">What we don't collect</h2>
         <ul className="list-disc pl-5 space-y-1">
-          <li>No email, phone number, address, or real name.</li>
+          <li>No email, no address, no real name.</li>
           <li>No contacts, no location, no camera or microphone access (unless you scan a circle QR code; images are processed on-device only).</li>
           <li>No ad trackers, no third-party analytics in the MVP.</li>
+          <li>Guest mode: no phone, no password, nothing beyond a random device ID.</li>
         </ul>
 
         <h2 className="font-semibold text-white mt-4">Who sees your data</h2>

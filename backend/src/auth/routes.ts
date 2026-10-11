@@ -4,9 +4,33 @@ import { db } from '../db/client.js';
 import { signJwt } from './jwt.js';
 import { requireAuth, type AuthedRequest } from './middleware.js';
 import { uuid, randomCosmicName } from '../lib/uuid.js';
+import { hashPassword, verifyPassword } from '../lib/password.js';
 
 export const authRouter = Router();
 
+// Accept Indian 10-digit numbers or international E.164-ish (10-15 digits, optional +)
+const phoneRe = /^\+?[0-9]{10,15}$/;
+const normalizePhone = (p: string) => p.replace(/\s|-/g, '');
+
+function seedFirstLight(userId: string) {
+  db.prepare(
+    `INSERT INTO subjects (id, user_id, name, color, created_at) VALUES (?, ?, ?, ?, ?)`
+  ).run(uuid(), userId, 'First Light', '#8B5CF6', Date.now());
+}
+
+function userToWire(u: any) {
+  return {
+    id: u.id,
+    cosmicName: u.cosmic_name,
+    avatarSeed: u.avatar_seed,
+    level: u.level,
+    totalFocusMin: u.total_focus_min,
+    streakDays: u.streak_days,
+    phoneNumber: u.phone_number ?? null,
+  };
+}
+
+// ---- Anonymous (guest) ----
 const anonBody = z.object({ deviceId: z.string().min(8).max(128) });
 
 authRouter.post('/anonymous', (req, res) => {
@@ -14,23 +38,10 @@ authRouter.post('/anonymous', (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: 'bad_body' });
   const { deviceId } = parsed.data;
 
-  const existing = db
-    .prepare('SELECT id, cosmic_name, avatar_seed, level, total_focus_min, streak_days FROM users WHERE device_id = ?')
-    .get(deviceId) as any;
-
+  const existing = db.prepare('SELECT * FROM users WHERE device_id = ?').get(deviceId) as any;
   if (existing) {
     const jwt = signJwt({ uid: existing.id, did: deviceId });
-    return res.json({
-      jwt,
-      user: {
-        id: existing.id,
-        cosmicName: existing.cosmic_name,
-        avatarSeed: existing.avatar_seed,
-        level: existing.level,
-        totalFocusMin: existing.total_focus_min,
-        streakDays: existing.streak_days,
-      },
-    });
+    return res.json({ jwt, user: userToWire(existing) });
   }
 
   const id = uuid();
@@ -39,17 +50,87 @@ authRouter.post('/anonymous', (req, res) => {
   db.prepare(
     `INSERT INTO users (id, device_id, cosmic_name, avatar_seed, created_at) VALUES (?, ?, ?, ?, ?)`
   ).run(id, deviceId, cosmicName, avatarSeed, Date.now());
-
-  // Seed the "First Light" starter planet so the galaxy is never empty
-  db.prepare(
-    `INSERT INTO subjects (id, user_id, name, color, created_at) VALUES (?, ?, ?, ?, ?)`
-  ).run(uuid(), id, 'First Light', '#8B5CF6', Date.now());
-
+  seedFirstLight(id);
   const jwt = signJwt({ uid: id, did: deviceId });
-  res.json({
-    jwt,
-    user: { id, cosmicName, avatarSeed, level: 1, totalFocusMin: 0, streakDays: 0 },
-  });
+  const u = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  res.json({ jwt, user: userToWire(u) });
+});
+
+// ---- Signup with phone + password ----
+const signupBody = z.object({
+  phoneNumber: z.string().min(10).max(20),
+  password: z.string().min(6).max(72),
+  deviceId: z.string().min(8).max(128),
+  cosmicName: z.string().min(2).max(24).regex(/^[A-Za-z0-9 ]+$/).optional(),
+});
+
+authRouter.post('/signup', (req, res) => {
+  const parsed = signupBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'bad_body' });
+  const phone = normalizePhone(parsed.data.phoneNumber);
+  if (!phoneRe.test(phone)) return res.status(400).json({ error: 'bad_phone' });
+
+  const existing = db.prepare('SELECT id FROM users WHERE phone_number = ?').get(phone);
+  if (existing) return res.status(409).json({ error: 'phone_taken' });
+
+  const id = uuid();
+  const cosmicName = parsed.data.cosmicName ?? randomCosmicName();
+  const avatarSeed = uuid().slice(0, 8);
+  const passwordHash = hashPassword(parsed.data.password);
+
+  db.prepare(
+    `INSERT INTO users (id, device_id, cosmic_name, avatar_seed, phone_number, password_hash, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, parsed.data.deviceId, cosmicName, avatarSeed, phone, passwordHash, Date.now());
+  seedFirstLight(id);
+
+  const jwt = signJwt({ uid: id, did: parsed.data.deviceId });
+  const u = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  res.json({ jwt, user: userToWire(u) });
+});
+
+// ---- Login with phone + password ----
+const loginBody = z.object({
+  phoneNumber: z.string().min(10).max(20),
+  password: z.string().min(6).max(72),
+  deviceId: z.string().min(8).max(128),
+});
+
+authRouter.post('/login', (req, res) => {
+  const parsed = loginBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'bad_body' });
+  const phone = normalizePhone(parsed.data.phoneNumber);
+
+  const u = db.prepare('SELECT * FROM users WHERE phone_number = ?').get(phone) as any;
+  if (!u || !u.password_hash) return res.status(401).json({ error: 'bad_credentials' });
+  if (!verifyPassword(parsed.data.password, u.password_hash)) {
+    return res.status(401).json({ error: 'bad_credentials' });
+  }
+  // Update device_id in case they switched phones
+  db.prepare('UPDATE users SET device_id = ? WHERE id = ?').run(parsed.data.deviceId, u.id);
+  const jwt = signJwt({ uid: u.id, did: parsed.data.deviceId });
+  res.json({ jwt, user: userToWire(u) });
+});
+
+// ---- Attach phone/password to an existing (anonymous) account ----
+const attachBody = z.object({
+  phoneNumber: z.string().min(10).max(20),
+  password: z.string().min(6).max(72),
+});
+
+authRouter.post('/attach-phone', requireAuth, (req, res) => {
+  const parsed = attachBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'bad_body' });
+  const { userId } = req as AuthedRequest;
+  const phone = normalizePhone(parsed.data.phoneNumber);
+  if (!phoneRe.test(phone)) return res.status(400).json({ error: 'bad_phone' });
+
+  const taken = db.prepare('SELECT id FROM users WHERE phone_number = ? AND id != ?').get(phone, userId);
+  if (taken) return res.status(409).json({ error: 'phone_taken' });
+
+  db.prepare('UPDATE users SET phone_number = ?, password_hash = ? WHERE id = ?')
+    .run(phone, hashPassword(parsed.data.password), userId);
+  res.json({ ok: true });
 });
 
 const nameBody = z.object({ name: z.string().min(2).max(24).regex(/^[A-Za-z0-9 ]+$/) });
@@ -64,16 +145,7 @@ authRouter.post('/claim-name', requireAuth, (req, res) => {
 
 authRouter.get('/me', requireAuth, (req, res) => {
   const { userId } = req as AuthedRequest;
-  const u = db
-    .prepare('SELECT id, cosmic_name, avatar_seed, level, total_focus_min, streak_days FROM users WHERE id = ?')
-    .get(userId) as any;
+  const u = db.prepare('SELECT * FROM users WHERE id = ?').get(userId) as any;
   if (!u) return res.status(404).json({ error: 'not_found' });
-  res.json({
-    id: u.id,
-    cosmicName: u.cosmic_name,
-    avatarSeed: u.avatar_seed,
-    level: u.level,
-    totalFocusMin: u.total_focus_min,
-    streakDays: u.streak_days,
-  });
+  res.json(userToWire(u));
 });
