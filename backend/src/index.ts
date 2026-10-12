@@ -1,6 +1,9 @@
 import express from 'express';
 import cors from 'cors';
 import { createServer } from 'node:http';
+import { existsSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import { initSchema } from './db/client.js';
 import { authRouter } from './auth/routes.js';

@@ -1,23 +1,28 @@
 services:
   - type: web
-    name: studygalaxy-backend
+    name: studygalaxy
     runtime: node
-    rootDir: backend
-    plan: free           # no persistent disk on free — data lives in Turso
-    buildCommand: npm install && npm run build
-    startCommand: node dist/index.js
+    rootDir: .                 # repo root so we can build frontend and backend together
+    plan: free                 # no persistent disk on free — data lives in Turso
     healthCheckPath: /health
+    # Build the web app, then the server. The server serves frontend/dist,
+    # so one service hosts the whole product (no separate static host, no CORS).
+    buildCommand: |
+      cd frontend && npm install && npm run build
+      cd ../backend && npm install && npm run build
+    startCommand: cd backend && node dist/index.js
     envVars:
       - key: NODE_VERSION
         value: "22"
       - key: JWT_SECRET
         generateValue: true
-      # Set both of these in the Render dashboard (Environment tab):
-      #   DATABASE_URL        libsql://studygalaxy-<org>.turso.io
-      #   DATABASE_AUTH_TOKEN eyJ...
+      # Set these two in the Render dashboard → Environment:
+      #   DATABASE_URL         libsql://studygalaxy-<org>.turso.io
+      #   DATABASE_AUTH_TOKEN  eyJ...
       - key: DATABASE_URL
         sync: false
       - key: DATABASE_AUTH_TOKEN
         sync: false
+      # Frontend is served from the same origin now, so CORS stays closed.
       - key: CORS_ORIGIN
-        sync: false      # your frontend origin, e.g. https://studygalaxy.netlify.app
+        value: "false"
