@@ -6,8 +6,16 @@ import { config } from '../config.js';
 mkdirSync(dirname(config.dbPath), { recursive: true });
 
 export const db = new Database(config.dbPath);
+// Tuned for a single-node deploy serving tens of thousands of students:
+// WAL lets readers run while one writer commits; NORMAL sync is durable enough
+// for session data and avoids an fsync on every write.
 db.pragma('journal_mode = WAL');
+db.pragma('synchronous = NORMAL');
 db.pragma('foreign_keys = ON');
+db.pragma('busy_timeout = 5000');
+db.pragma('cache_size = -64000'); // ~64MB page cache
+db.pragma('mmap_size = 268435456'); // 256MB memory-mapped I/O
+db.pragma('temp_store = MEMORY');
 
 function columnExists(table: string, col: string): boolean {
   const rows = db.prepare(`PRAGMA table_info(${table})`).all() as any[];
@@ -118,4 +126,14 @@ export function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_todos_session ON todos(session_id, ord);
   `);
+
+  // Indexes that matter once there are tens of thousands of users
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_sessions_user_started ON sessions(user_id, started_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_sessions_user_completed ON sessions(user_id, completed, started_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_members_user ON circle_members(user_id);
+    CREATE INDEX IF NOT EXISTS idx_users_device ON users(device_id);
+  `);
+
+  db.exec('ANALYZE');
 }

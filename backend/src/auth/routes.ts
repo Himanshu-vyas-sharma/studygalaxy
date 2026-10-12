@@ -5,12 +5,25 @@ import { signJwt } from './jwt.js';
 import { requireAuth, type AuthedRequest } from './middleware.js';
 import { uuid, randomCosmicName } from '../lib/uuid.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
+import { COUNTRIES, toE164, normalizeE164 } from '../lib/countries.js';
+import { rateLimit } from '../lib/rateLimit.js';
 
 export const authRouter = Router();
 
-// Accept Indian 10-digit numbers or international E.164-ish (10-15 digits, optional +)
-const phoneRe = /^\+?[0-9]{10,15}$/;
-const normalizePhone = (p: string) => p.replace(/\s|-/g, '');
+/**
+ * Phone is always stored E.164: dial code + exactly 10 national digits.
+ * Clients send { dialCode, phoneNumber } (preferred) or a full +<dial><10> string.
+ */
+function resolvePhone(input: { dialCode?: string; phoneNumber: string }): string | null {
+  if (input.dialCode) return toE164(input.dialCode, input.phoneNumber);
+  return normalizeE164(input.phoneNumber);
+}
+
+// Brute-force protection on the credential endpoints.
+const authLimiter = rateLimit({ windowMs: 15 * 60_000, max: 30 });
+const signupLimiter = rateLimit({ windowMs: 60 * 60_000, max: 10 });
+
+authRouter.get('/countries', (_req, res) => res.json(COUNTRIES));
 
 function seedFirstLight(userId: string) {
   db.prepare(
@@ -58,17 +71,18 @@ authRouter.post('/anonymous', (req, res) => {
 
 // ---- Signup with phone + password ----
 const signupBody = z.object({
+  dialCode: z.string().min(2).max(6).optional(),
   phoneNumber: z.string().min(10).max(20),
   password: z.string().min(6).max(72),
   deviceId: z.string().min(8).max(128),
   cosmicName: z.string().min(2).max(24).regex(/^[A-Za-z0-9 ]+$/).optional(),
 });
 
-authRouter.post('/signup', (req, res) => {
+authRouter.post('/signup', signupLimiter, (req, res) => {
   const parsed = signupBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'bad_body' });
-  const phone = normalizePhone(parsed.data.phoneNumber);
-  if (!phoneRe.test(phone)) return res.status(400).json({ error: 'bad_phone' });
+  const phone = resolvePhone(parsed.data);
+  if (!phone) return res.status(400).json({ error: 'bad_phone' });
 
   const existing = db.prepare('SELECT id FROM users WHERE phone_number = ?').get(phone);
   if (existing) return res.status(409).json({ error: 'phone_taken' });
@@ -91,15 +105,17 @@ authRouter.post('/signup', (req, res) => {
 
 // ---- Login with phone + password ----
 const loginBody = z.object({
+  dialCode: z.string().min(2).max(6).optional(),
   phoneNumber: z.string().min(10).max(20),
   password: z.string().min(6).max(72),
   deviceId: z.string().min(8).max(128),
 });
 
-authRouter.post('/login', (req, res) => {
+authRouter.post('/login', authLimiter, (req, res) => {
   const parsed = loginBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'bad_body' });
-  const phone = normalizePhone(parsed.data.phoneNumber);
+  const phone = resolvePhone(parsed.data);
+  if (!phone) return res.status(401).json({ error: 'bad_credentials' });
 
   const u = db.prepare('SELECT * FROM users WHERE phone_number = ?').get(phone) as any;
   if (!u || !u.password_hash) return res.status(401).json({ error: 'bad_credentials' });
@@ -114,6 +130,7 @@ authRouter.post('/login', (req, res) => {
 
 // ---- Attach phone/password to an existing (anonymous) account ----
 const attachBody = z.object({
+  dialCode: z.string().min(2).max(6).optional(),
   phoneNumber: z.string().min(10).max(20),
   password: z.string().min(6).max(72),
 });
@@ -122,8 +139,8 @@ authRouter.post('/attach-phone', requireAuth, (req, res) => {
   const parsed = attachBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'bad_body' });
   const { userId } = req as AuthedRequest;
-  const phone = normalizePhone(parsed.data.phoneNumber);
-  if (!phoneRe.test(phone)) return res.status(400).json({ error: 'bad_phone' });
+  const phone = resolvePhone(parsed.data);
+  if (!phone) return res.status(400).json({ error: 'bad_phone' });
 
   const taken = db.prepare('SELECT id FROM users WHERE phone_number = ? AND id != ?').get(phone, userId);
   if (taken) return res.status(409).json({ error: 'phone_taken' });

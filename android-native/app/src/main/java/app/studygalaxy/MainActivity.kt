@@ -3,7 +3,9 @@ package app.studygalaxy
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -33,6 +35,7 @@ class MainActivity : ComponentActivity() {
     private val vm: MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
             StudyGalaxyTheme {
@@ -40,6 +43,7 @@ class MainActivity : ComponentActivity() {
                     GalaxyBackground()
                     val state by vm.state.collectAsState()
                     AnimatedContent(
+                        modifier = Modifier.safeDrawingPadding(),
                         targetState = state.screen,
                         transitionSpec = {
                             (fadeIn(tween(350)) + slideInVertically(tween(350)) { it / 6 }) togetherWith

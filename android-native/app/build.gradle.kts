@@ -28,7 +28,8 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField("String", "API_BASE", "\"http://10.0.2.2:3000\"")
+            // Point at your PC's LAN IP so a real phone on the same WiFi can reach it.
+            buildConfigField("String", "API_BASE", "\"http://192.168.0.106:3000\"")
         }
         release {
             isMinifyEnabled = false

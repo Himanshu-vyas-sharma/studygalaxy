@@ -49,7 +49,7 @@ fun HomeScreen(
     val ringRotate by infinite.animateFloat(0f, 360f,
         infiniteRepeatable(tween(20000, easing = LinearEasing)), label = "rr")
 
-    Column(Modifier.fillMaxSize().padding(top = 32.dp, bottom = 8.dp)) {
+    Column(Modifier.fillMaxSize().padding(bottom = 8.dp)) {
 
         // Top strip
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {

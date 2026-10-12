@@ -10,11 +10,23 @@ body {
   background: #05020D;
   color: #F5F3FF;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  /* Heavier baseline so the whole app reads bold */
+  font-weight: 600;
+  letter-spacing: -0.011em;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   overscroll-behavior: none;
 }
 
-.font-display { font-family: Fraunces, serif; font-weight: 900; }
+button, input, textarea, select { font-family: inherit; font-weight: 600; }
+
+/* Display face for the big numbers and headlines */
+.font-display {
+  font-family: Fraunces, Georgia, serif;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  font-variation-settings: 'opsz' 120, 'SOFT' 0, 'WONK' 1;
+}
 
 .glow-portal {
   box-shadow:
@@ -23,11 +35,34 @@ body {
     inset 0 0 40px rgba(255, 255, 255, 0.08);
 }
 
+/* Animated gradient headline — the sheen slides across continuously */
 .gradient-text {
-  background: linear-gradient(135deg, #C4B5FD 0%, #F472B6 50%, #FBBF24 100%);
+  background: linear-gradient(
+    100deg,
+    #C4B5FD 0%,
+    #F472B6 22%,
+    #FBBF24 44%,
+    #F472B6 66%,
+    #C4B5FD 88%,
+    #F472B6 100%
+  );
+  background-size: 300% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  animation: sheen 7s linear infinite;
+}
+
+@keyframes sheen {
+  from { background-position: 0% 50%; }
+  to   { background-position: 300% 50%; }
+}
+
+/* Soft pulse for live/active labels */
+.live-pulse { animation: livePulse 2.2s ease-in-out infinite; }
+@keyframes livePulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
 }
 
 @keyframes twinkle {
@@ -42,3 +77,9 @@ body {
 
 .scrollbar-none::-webkit-scrollbar { display: none; }
 .scrollbar-none { scrollbar-width: none; }
+
+/* Respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .gradient-text { animation: none; }
+  .live-pulse { animation: none; }
+}

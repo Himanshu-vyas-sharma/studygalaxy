@@ -1,4 +1,9 @@
-const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:3000';
+// Talk to the backend on whatever host served this page, so opening the app from
+// a phone on the LAN (http://192.168.x.x:5173) hits that same machine's :3000
+// instead of the phone's own localhost.
+const BASE =
+  (import.meta.env.VITE_API_BASE as string | undefined) ??
+  `${window.location.protocol}//${window.location.hostname}:3000`;
 
 function getToken(): string | null {
   return localStorage.getItem('sg.jwt');
@@ -54,15 +59,15 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ deviceId }),
     }),
-  signup: (phoneNumber: string, password: string, deviceId: string, cosmicName?: string) =>
+  signup: (dialCode: string, phoneNumber: string, password: string, deviceId: string, cosmicName?: string) =>
     request<{ jwt: string; user: User }>('/auth/signup', {
       method: 'POST',
-      body: JSON.stringify({ phoneNumber, password, deviceId, cosmicName }),
+      body: JSON.stringify({ dialCode, phoneNumber, password, deviceId, cosmicName }),
     }),
-  login: (phoneNumber: string, password: string, deviceId: string) =>
+  login: (dialCode: string, phoneNumber: string, password: string, deviceId: string) =>
     request<{ jwt: string; user: User }>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ phoneNumber, password, deviceId }),
+      body: JSON.stringify({ dialCode, phoneNumber, password, deviceId }),
     }),
   attachPhone: (phoneNumber: string, password: string) =>
     request<{ ok: true }>('/auth/attach-phone', {
