@@ -14,8 +14,6 @@ import { notesRouter } from './notes/routes.js';
 import { rateLimit } from './lib/rateLimit.js';
 import { attachWs } from './ws/server.js';
 
-initSchema();
-
 const app = express();
 app.set('trust proxy', 1); // behind Render/Fly proxy so req.ip is the real client
 app.use(cors({ origin: config.corsOrigin }));
@@ -36,8 +34,17 @@ app.use('/stats', statsRouter);
 app.use('/profile', profileRouter);
 app.use('/notes', notesRouter);
 
+// Any route that throws returns JSON instead of an HTML stack trace.
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('[unhandled]', err);
+  res.status(500).json({ error: 'server_error' });
+});
+
 const httpServer = createServer(app);
 attachWs(httpServer);
+
+// Schema must exist before we accept traffic.
+await initSchema();
 
 // Bind 0.0.0.0 so phones on the same WiFi can reach this over IPv4.
 httpServer.listen(config.port, '0.0.0.0', () => {

@@ -23,8 +23,10 @@ function broadcast(circleId: string, msg: Record<string, unknown>) {
 
 function presenceSnapshot(circleId: string) {
   const set = circleClients.get(circleId);
-  const names = set ? Array.from(set).map(ws => clientMeta.get(ws)?.cosmicName).filter(Boolean) : [];
-  return { type: 'presence', circleId, focusing: names };
+  const focusing = set
+    ? Array.from(set).map(ws => clientMeta.get(ws)?.cosmicName).filter(Boolean)
+    : [];
+  return { type: 'presence', circleId, focusing };
 }
 
 export function attachWs(httpServer: Server) {
@@ -34,32 +36,47 @@ export function attachWs(httpServer: Server) {
     const url = new URL(req.url ?? '', `http://${req.headers.host}`);
     const match = url.pathname.match(/^\/ws\/circles\/([a-zA-Z0-9-]+)$/);
     if (!match) { socket.destroy(); return; }
+
     const circleId = match[1];
     const token = url.searchParams.get('token') ?? '';
+
     let userId: string;
     try { userId = verifyJwt(token).uid; } catch { socket.destroy(); return; }
-    const member = db.prepare('SELECT 1 FROM circle_members WHERE circle_id = ? AND user_id = ?').get(circleId, userId);
-    if (!member) { socket.destroy(); return; }
-    const name = (db.prepare('SELECT cosmic_name FROM users WHERE id = ?').get(userId) as any)?.cosmic_name ?? 'Unknown';
 
-    wss.handleUpgrade(req, socket, head, ws => {
-      clientMeta.set(ws, { userId, circleId, cosmicName: name });
-      if (!circleClients.has(circleId)) circleClients.set(circleId, new Set());
-      circleClients.get(circleId)!.add(ws);
-      circleBroadcasters.set(circleId, msg => broadcast(circleId, msg));
-      broadcast(circleId, presenceSnapshot(circleId));
+    // DB lookups are async now, so resolve membership before upgrading.
+    void (async () => {
+      const member = await db.get('SELECT 1 FROM circle_members WHERE circle_id = ? AND user_id = ?', [
+        circleId, userId,
+      ]);
+      if (!member) { socket.destroy(); return; }
 
-      ws.on('message', raw => {
-        try {
-          const msg = JSON.parse(String(raw));
-          if (msg?.type === 'ping') ws.send(JSON.stringify({ type: 'pong' }));
-        } catch { /* ignore */ }
-      });
+      const u = await db.get<any>('SELECT cosmic_name FROM users WHERE id = ?', [userId]);
+      const name = u?.cosmic_name ?? 'Unknown';
 
-      ws.on('close', () => {
-        circleClients.get(circleId)?.delete(ws);
+      wss.handleUpgrade(req, socket, head, ws => {
+        clientMeta.set(ws, { userId, circleId, cosmicName: name });
+        if (!circleClients.has(circleId)) circleClients.set(circleId, new Set());
+        circleClients.get(circleId)!.add(ws);
+        circleBroadcasters.set(circleId, msg => broadcast(circleId, msg));
         broadcast(circleId, presenceSnapshot(circleId));
+
+        ws.on('message', raw => {
+          try {
+            const msg = JSON.parse(String(raw));
+            if (msg?.type === 'ping') ws.send(JSON.stringify({ type: 'pong' }));
+          } catch { /* ignore malformed frames */ }
+        });
+
+        ws.on('close', () => {
+          const set = circleClients.get(circleId);
+          set?.delete(ws);
+          if (set && set.size === 0) {
+            circleClients.delete(circleId);
+            circleBroadcasters.delete(circleId);
+          }
+          broadcast(circleId, presenceSnapshot(circleId));
+        });
       });
-    });
+    })();
   });
 }

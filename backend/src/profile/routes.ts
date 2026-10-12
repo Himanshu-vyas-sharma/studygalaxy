@@ -14,7 +14,7 @@ const profileBody = z.object({
   biggestDistraction: z.enum(['phone', 'social', 'noise', 'sleep', 'boredom', 'friends']).optional(),
 });
 
-profileRouter.post('/', (req, res) => {
+profileRouter.post('/', async (req, res) => {
   const parsed = profileBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'bad_body' });
   const { userId } = req as AuthedRequest;
@@ -29,18 +29,20 @@ profileRouter.post('/', (req, res) => {
   if (p.biggestDistraction !== undefined) { fields.push('biggest_distraction = ?'); values.push(p.biggestDistraction); }
   if (fields.length === 0) return res.json({ ok: true });
 
-  values.push(userId);
-  db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+  await db.run(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, [...values, userId]);
   res.json({ ok: true });
 });
 
-profileRouter.get('/', (req, res) => {
+profileRouter.get('/', async (req, res) => {
   const { userId } = req as AuthedRequest;
-  const u = db.prepare('SELECT exam_goal, daily_hours, top_subjects, study_time, biggest_distraction FROM users WHERE id = ?').get(userId) as any;
+  const u = await db.get<any>(
+    'SELECT exam_goal, daily_hours, top_subjects, study_time, biggest_distraction FROM users WHERE id = ?',
+    [userId]
+  );
   if (!u) return res.status(404).json({ error: 'not_found' });
   res.json({
     examGoal: u.exam_goal,
-    dailyHours: u.daily_hours,
+    dailyHours: u.daily_hours == null ? null : Number(u.daily_hours),
     topSubjects: u.top_subjects ? JSON.parse(u.top_subjects) : null,
     studyTime: u.study_time,
     biggestDistraction: u.biggest_distraction,

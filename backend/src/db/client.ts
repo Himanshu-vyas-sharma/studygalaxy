@@ -1,29 +1,83 @@
-import Database from 'better-sqlite3';
+import { createClient, type Client, type InArgs } from '@libsql/client';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { config } from '../config.js';
 
-mkdirSync(dirname(config.dbPath), { recursive: true });
+// For a local file: URL make sure the folder exists before connecting.
+if (config.databaseUrl.startsWith('file:')) {
+  const path = config.databaseUrl.replace(/^file:/, '');
+  mkdirSync(dirname(path), { recursive: true });
+}
 
-export const db = new Database(config.dbPath);
-// Tuned for a single-node deploy serving tens of thousands of students:
-// WAL lets readers run while one writer commits; NORMAL sync is durable enough
-// for session data and avoids an fsync on every write.
-db.pragma('journal_mode = WAL');
-db.pragma('synchronous = NORMAL');
-db.pragma('foreign_keys = ON');
-db.pragma('busy_timeout = 5000');
-db.pragma('cache_size = -64000'); // ~64MB page cache
-db.pragma('mmap_size = 268435456'); // 256MB memory-mapped I/O
-db.pragma('temp_store = MEMORY');
+const client: Client = createClient({
+  url: config.databaseUrl,
+  authToken: config.databaseAuthToken,
+});
 
-function columnExists(table: string, col: string): boolean {
-  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as any[];
+export const isLocalFile = config.databaseUrl.startsWith('file:');
+
+/** Thin async wrapper over libSQL with the shape the route handlers use. */
+export const db = {
+  /** First matching row, or undefined. */
+  async get<T = Record<string, unknown>>(sql: string, params: InArgs = []): Promise<T | undefined> {
+    const rs = await client.execute({ sql, args: params });
+    return rs.rows[0] as T | undefined;
+  },
+
+  /** All matching rows. */
+  async all<T = Record<string, unknown>>(sql: string, params: InArgs = []): Promise<T[]> {
+    const rs = await client.execute({ sql, args: params });
+    return rs.rows as unknown as T[];
+  },
+
+  /** Write; returns affected row count. */
+  async run(sql: string, params: InArgs = []): Promise<{ changes: number }> {
+    const rs = await client.execute({ sql, args: params });
+    return { changes: Number(rs.rowsAffected ?? 0) };
+  },
+
+  /** Multi-statement DDL / migrations. */
+  async exec(sql: string): Promise<void> {
+    await client.executeMultiple(sql);
+  },
+
+  /** Atomic multi-write. */
+  async batch(statements: { sql: string; args?: InArgs }[]): Promise<void> {
+    if (statements.length === 0) return;
+    await client.batch(
+      statements.map(s => ({ sql: s.sql, args: s.args ?? [] })),
+      'write'
+    );
+  },
+
+  /** Single scalar COUNT(*) style helper. */
+  async count(sql: string, params: InArgs = []): Promise<number> {
+    const row = await db.get<{ c: number | bigint }>(sql, params);
+    return Number(row?.c ?? 0);
+  },
+};
+
+async function columnExists(table: string, col: string): Promise<boolean> {
+  const rows = await db.all<{ name: string }>(`PRAGMA table_info(${table})`);
   return rows.some(r => r.name === col);
 }
 
-export function initSchema() {
-  db.exec(`
+export async function initSchema(): Promise<void> {
+  // Local file: tune SQLite for a single-node deploy. Turso manages this itself.
+  if (isLocalFile) {
+    for (const p of [
+      'PRAGMA journal_mode = WAL',
+      'PRAGMA synchronous = NORMAL',
+      'PRAGMA busy_timeout = 5000',
+      'PRAGMA cache_size = -64000',
+      'PRAGMA temp_store = MEMORY',
+    ]) {
+      await client.execute(p).catch(() => {});
+    }
+  }
+  await client.execute('PRAGMA foreign_keys = ON').catch(() => {});
+
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       device_id TEXT UNIQUE NOT NULL,
@@ -85,24 +139,7 @@ export function initSchema() {
       created_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_events_circle ON circle_events(circle_id, created_at DESC);
-  `);
 
-  // Migrations for new auth columns (safe to run repeatedly)
-  if (!columnExists('users', 'phone_number'))
-    db.exec('ALTER TABLE users ADD COLUMN phone_number TEXT');
-  if (!columnExists('users', 'password_hash'))
-    db.exec('ALTER TABLE users ADD COLUMN password_hash TEXT');
-  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users(phone_number) WHERE phone_number IS NOT NULL');
-
-  // Onboarding answers
-  if (!columnExists('users', 'exam_goal')) db.exec('ALTER TABLE users ADD COLUMN exam_goal TEXT');
-  if (!columnExists('users', 'daily_hours')) db.exec('ALTER TABLE users ADD COLUMN daily_hours INTEGER');
-  if (!columnExists('users', 'top_subjects')) db.exec('ALTER TABLE users ADD COLUMN top_subjects TEXT');
-  if (!columnExists('users', 'study_time')) db.exec('ALTER TABLE users ADD COLUMN study_time TEXT');
-  if (!columnExists('users', 'biggest_distraction')) db.exec('ALTER TABLE users ADD COLUMN biggest_distraction TEXT');
-
-  // Notes
-  db.exec(`
     CREATE TABLE IF NOT EXISTS notes (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -113,10 +150,7 @@ export function initSchema() {
       updated_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_notes_user ON notes(user_id, updated_at DESC);
-  `);
 
-  // Session-linked todos
-  db.exec(`
     CREATE TABLE IF NOT EXISTS todos (
       id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -127,13 +161,29 @@ export function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_todos_session ON todos(session_id, ord);
   `);
 
-  // Indexes that matter once there are tens of thousands of users
-  db.exec(`
+  // Column migrations (safe to re-run)
+  const adds: [string, string, string][] = [
+    ['users', 'phone_number', 'TEXT'],
+    ['users', 'password_hash', 'TEXT'],
+    ['users', 'exam_goal', 'TEXT'],
+    ['users', 'daily_hours', 'INTEGER'],
+    ['users', 'top_subjects', 'TEXT'],
+    ['users', 'study_time', 'TEXT'],
+    ['users', 'biggest_distraction', 'TEXT'],
+  ];
+  for (const [table, col, type] of adds) {
+    if (!(await columnExists(table, col))) {
+      await db.run(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+    }
+  }
+
+  await db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users(phone_number) WHERE phone_number IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_sessions_user_started ON sessions(user_id, started_at DESC);
     CREATE INDEX IF NOT EXISTS idx_sessions_user_completed ON sessions(user_id, completed, started_at DESC);
     CREATE INDEX IF NOT EXISTS idx_members_user ON circle_members(user_id);
     CREATE INDEX IF NOT EXISTS idx_users_device ON users(device_id);
   `);
 
-  db.exec('ANALYZE');
+  await client.execute('ANALYZE').catch(() => {});
 }

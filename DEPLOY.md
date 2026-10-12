@@ -1,115 +1,176 @@
-# Deploy StudyGalaxy for Free (students, no $25 fee needed)
+# Deploy StudyGalaxy — free, worldwide, persistent
 
-End result: your app lives at `https://studygalaxy.netlify.app` (or similar). Any friend opens that URL in Chrome, taps "Add to Home Screen," and the app lives on their phone like a native one. **No Play Store needed.**
+End state: students anywhere open your URL (or the Android app) and it just works. Your PC can be off. **$0/month.**
 
-Three accounts, all free, all no credit card:
+```
+Turso      →  the database (persistent, 5GB free)
+Render     →  the backend  (free web service)
+Netlify    →  the frontend (free static hosting + HTTPS)
+cron-job   →  pings /health every 10 min so Render never sleeps
+```
 
-1. **GitHub** — hosts your code
-2. **Render** — hosts your backend (free HTTPS, free 1 GB disk)
-3. **Netlify** — hosts your frontend (free HTTPS, free static hosting)
+## Why this stack and not just Render
 
-Total time: **~45 minutes** the first time. Future updates: `git push` and both auto-redeploy.
+Render's free web services **cannot attach a persistent disk** — the filesystem is wiped on every restart. A SQLite file there would lose every account. So the database lives in Turso (hosted libSQL — same SQLite engine, same SQL) and Render only runs the stateless Node process.
 
-## Step 1 — GitHub (5 min)
+Free-tier headroom for **50,000 students**: Turso allows 500M row reads and 10M row writes per month. StudyGalaxy's usage is roughly 15M reads and 2.5M writes — about 3% and 25% of the limits.
 
-1. Go to [github.com](https://github.com) → **Sign up** (free). Verify email.
-2. Click the **+** top-right → **New repository**.
-3. Name it `studygalaxy`. Set **Private** if you want (free either way).
-4. Do NOT tick "Add README" (we have one).
-5. Create repository. GitHub will show you a page with commands — ignore those, we have ours below.
+---
 
-Then in PowerShell:
+## Step 1 — Turso (database, ~5 min)
+
+1. Sign up free at [turso.tech](https://turso.tech) (GitHub login).
+2. Install the CLI:
+   - Windows (PowerShell): `irm get.tur.so/install.ps1 | iex`
+   - or use the web dashboard instead of the CLI — both work.
+3. Create the database and grab credentials:
+
+```powershell
+turso auth login
+turso db create studygalaxy
+turso db show studygalaxy --url          # -> libsql://studygalaxy-<org>.turso.io
+turso db tokens create studygalaxy       # -> eyJ... (long token)
+```
+
+Save both values. You'll paste them into Render in step 2.
+
+**Tables create themselves.** `initSchema()` runs on boot, so the first deploy builds every table and index automatically.
+
+### Optional — copy your local test data up
+
+```powershell
+cd "C:\Users\Mayank Vyas\Documents\studygalaxy\backend"
+turso db shell studygalaxy < (sqlite3 data/studygalaxy.sqlite .dump)
+```
+Skip this if you're happy starting fresh in production.
+
+---
+
+## Step 2 — GitHub + Render (backend, ~15 min)
+
+### Push to GitHub
 
 ```powershell
 cd "C:\Users\Mayank Vyas\Documents\studygalaxy"
-git init
-git add .
-git commit -m "Initial commit: StudyGalaxy MVP"
 git branch -M main
 git remote add origin https://github.com/<your-username>/studygalaxy.git
 git push -u origin main
 ```
 
-Replace `<your-username>` with your GitHub username. First push asks you to log in via browser — Chrome opens, you approve, done.
+### Deploy on Render
 
-## Step 2 — Render (backend, free, 10 min)
+1. [render.com](https://render.com) → sign in with GitHub → **New +** → **Blueprint**
+2. Pick the `studygalaxy` repo. Render reads `backend/render.yaml`.
+3. It will ask for the values marked `sync: false`. Set:
 
-1. Go to [render.com](https://render.com) → **Get Started** → sign in with GitHub.
-2. **New +** → **Blueprint**.
-3. Connect your `studygalaxy` repo.
-4. Render reads `backend/render.yaml` automatically. It will show a plan preview: 1 web service + 1 persistent disk.
-5. Click **Apply**.
-6. Wait ~3 min for first build. The URL will look like `https://studygalaxy-backend.onrender.com`.
-7. **Important**: once backend is live, back in Render dashboard → the service → **Environment** → add:
-   - `CORS_ORIGIN` = (your Netlify URL from step 3; come back and update after step 3)
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | `libsql://studygalaxy-<org>.turso.io` (from step 1) |
+| `DATABASE_AUTH_TOKEN` | the `eyJ...` token (from step 1) |
+| `CORS_ORIGIN` | leave blank for now; fill after step 3 |
 
-**About the free tier:** Render spins down the service after 15 min of inactivity, and the next request wakes it up (30 sec cold start). This is normal and FINE for a student launch. If it becomes a problem later, Fly.io free tier has no spin-down.
+`JWT_SECRET` is generated automatically — don't set it by hand.
 
-Test it works:
-```powershell
-# Replace with your actual Render URL
-curl https://studygalaxy-backend.onrender.com/health
-# Should return: {"ok":true,"service":"studygalaxy"}
+4. **Apply**. First build takes ~3 min.
+5. Verify: open `https://<your-service>.onrender.com/health` → `{"ok":true,"service":"studygalaxy"}`
+
+---
+
+## Step 3 — Netlify (frontend, ~10 min)
+
+1. [netlify.com](https://netlify.com) → sign in with GitHub → **Add new site** → **Import an existing project** → pick `studygalaxy`
+2. Netlify reads `frontend/netlify.toml`, so build settings are already correct.
+3. **Site configuration → Environment variables** → add:
+
+| Variable | Value |
+|---|---|
+| `VITE_API_BASE` | your Render URL, e.g. `https://studygalaxy-backend.onrender.com` (no trailing slash) |
+
+4. **Deploy site**, then rename it: Site settings → Change site name → `studygalaxy`
+5. Go back to Render → Environment → set `CORS_ORIGIN` to your Netlify URL (`https://studygalaxy.netlify.app`). Render redeploys automatically.
+
+---
+
+## Step 4 — Keep Render awake (~2 min)
+
+Free Render services sleep after 15 minutes idle and take ~1 minute to wake — a terrible first impression. Fix it with a free pinger:
+
+1. Go to [cron-job.org](https://cron-job.org) → sign up free
+2. **Create cronjob**:
+   - URL: `https://<your-service>.onrender.com/health`
+   - Schedule: every **10 minutes**
+3. Save and enable.
+
+730 hours/month of uptime fits inside Render's 750 free instance-hours.
+
+---
+
+## Step 5 — Point the Android app at production
+
+In `android-native/app/build.gradle.kts`, the `release` block already reads:
+
+```kotlin
+buildConfigField("String", "API_BASE", "\"https://studygalaxy-backend.onrender.com\"")
 ```
 
-## Step 3 — Netlify (frontend, free, 10 min)
+Change that string to **your** Render URL, then rebuild:
 
-1. Go to [netlify.com](https://netlify.com) → **Sign up** with GitHub.
-2. **Add new site** → **Import an existing project** → GitHub → select `studygalaxy`.
-3. Netlify reads `frontend/netlify.toml` and auto-fills everything.
-4. **Site configuration** → **Environment variables** → add:
-   - `VITE_API_BASE` = your Render backend URL from step 2 (no trailing slash)
-5. **Deploy site**.
-6. First build takes ~2 min. You get a URL like `https://glittering-starlight-abc123.netlify.app`.
-7. Rename it: Site settings → Change site name → `studygalaxy` (or whatever's available) → gives you `https://studygalaxy.netlify.app`.
+```powershell
+cd "C:\Users\Mayank Vyas\Documents\studygalaxy\android-native"
+./gradlew bundleRelease     # -> app/build/outputs/bundle/release/app-release.aab
+```
 
-Now go back to Render and set `CORS_ORIGIN` to this Netlify URL. Render will auto-redeploy with the new CORS setting (~1 min).
+That `.aab` is what you upload to Play Console. See `PLAY_STORE_FINAL.md`.
 
-## Step 4 — Test on your phone (5 min)
-
-1. Open your Netlify URL in Chrome on your Android phone.
-2. Wait 2-3 seconds for the galaxy background to load.
-3. Pick a cosmic name → the app loads.
-4. Chrome menu (⋮) → **Add to Home Screen** → confirm.
-5. Your app's icon appears on the phone's home screen.
-6. Tap it. It opens fullscreen, no browser bar, feels native.
-
-Share the URL with friends. Each of them does the same 2-step install. **You just shipped an app for $0.**
+---
 
 ## Future updates
-
-Make any code change locally. Then:
 
 ```powershell
 cd "C:\Users\Mayank Vyas\Documents\studygalaxy"
 git add .
-git commit -m "Describe what changed"
+git commit -m "describe the change"
 git push
 ```
 
-Netlify + Render both auto-detect the push and redeploy within ~2 minutes. Your users refresh and get the new version (the service worker handles this cleanly).
+Render and Netlify both auto-deploy on push, ~2 min each.
 
-## Marketing hack: shareable install link
+---
 
-Netlify gives you a QR code for your site. Print it. Stick it on your college notice board. Students scan → their phone opens the app → they tap "Add to Home Screen." Done. No Play Store, no $25, real users.
+## Local development still works unchanged
 
-Alternative: WhatsApp forward with the URL. Instagram story with the QR. College WhatsApp group with "Join our study circle: `GLX-ABC123`" + URL.
+```powershell
+# Terminal 1
+cd backend;  npm run dev     # uses file:./data/studygalaxy.sqlite
 
-## When to pay the $25
+# Terminal 2
+cd frontend; npm run dev     # http://localhost:5173
+```
 
-Only pay for Play Store if ONE of these is true:
-- You have 100+ regular PWA users and need the Play Store search credibility.
-- Students tell you they'd use it IF it was on Play Store.
-- You want in-app purchases (not needed for StudyGalaxy MVP).
+`DATABASE_URL` defaults to the local SQLite file, so no Turso connection is needed to develop offline.
 
-Validate first. Pay later. **$25 is a reward for traction, not a prerequisite for launch.**
+---
 
 ## Troubleshooting
 
-- **"Add to Home Screen" doesn't appear**: You need HTTPS (Netlify is HTTPS by default — good). You also need to visit the site at least once and interact (click something). Chrome shows the prompt only after basic engagement.
+| Symptom | Cause | Fix |
+|---|---|---|
+| `Cannot reach the server` in app | `VITE_API_BASE` wrong or missing on Netlify | Set it, redeploy |
+| CORS error in browser console | `CORS_ORIGIN` on Render doesn't match frontend URL | Update it in Render env |
+| First request takes ~1 min | Render cold start | Set up the cron pinger (step 4) |
+| `SQLITE_AUTH` / connection refused | Bad `DATABASE_AUTH_TOKEN` | `turso db tokens create studygalaxy` again |
+| Data vanished after redeploy | Still on a local file in production | Confirm `DATABASE_URL` starts with `libsql://` |
 
-- **CORS error in browser console**: Backend's `CORS_ORIGIN` doesn't match your frontend URL. Fix in Render env panel.
+---
 
-- **Backend 503 / slow first load**: Render free tier cold start. First request after idle takes ~30 sec. Normal. Subsequent requests are instant.
+## Cost
 
-- **Service worker not updating after deploy**: Hard refresh (Ctrl+Shift+R) or close and reopen the PWA. The SW auto-updates in the background on next launch.
+| Item | Monthly |
+|---|---|
+| Turso (5GB, 500M reads) | $0 |
+| Render web service | $0 |
+| Netlify hosting + HTTPS | $0 |
+| cron-job.org pinger | $0 |
+| **Total** | **$0** |
+
+Only paid item in the whole project: the **one-time $25** Google Play developer fee.

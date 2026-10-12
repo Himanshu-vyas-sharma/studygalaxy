@@ -25,10 +25,11 @@ const signupLimiter = rateLimit({ windowMs: 60 * 60_000, max: 10 });
 
 authRouter.get('/countries', (_req, res) => res.json(COUNTRIES));
 
-function seedFirstLight(userId: string) {
-  db.prepare(
-    `INSERT INTO subjects (id, user_id, name, color, created_at) VALUES (?, ?, ?, ?, ?)`
-  ).run(uuid(), userId, 'First Light', '#8B5CF6', Date.now());
+async function seedFirstLight(userId: string) {
+  await db.run(
+    'INSERT INTO subjects (id, user_id, name, color, created_at) VALUES (?, ?, ?, ?, ?)',
+    [uuid(), userId, 'First Light', '#8B5CF6', Date.now()]
+  );
 }
 
 function userToWire(u: any) {
@@ -36,9 +37,9 @@ function userToWire(u: any) {
     id: u.id,
     cosmicName: u.cosmic_name,
     avatarSeed: u.avatar_seed,
-    level: u.level,
-    totalFocusMin: u.total_focus_min,
-    streakDays: u.streak_days,
+    level: Number(u.level),
+    totalFocusMin: Number(u.total_focus_min),
+    streakDays: Number(u.streak_days),
     phoneNumber: u.phone_number ?? null,
   };
 }
@@ -46,30 +47,27 @@ function userToWire(u: any) {
 // ---- Anonymous (guest) ----
 const anonBody = z.object({ deviceId: z.string().min(8).max(128) });
 
-authRouter.post('/anonymous', (req, res) => {
+authRouter.post('/anonymous', async (req, res) => {
   const parsed = anonBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'bad_body' });
   const { deviceId } = parsed.data;
 
-  const existing = db.prepare('SELECT * FROM users WHERE device_id = ?').get(deviceId) as any;
+  const existing = await db.get('SELECT * FROM users WHERE device_id = ?', [deviceId]);
   if (existing) {
-    const jwt = signJwt({ uid: existing.id, did: deviceId });
-    return res.json({ jwt, user: userToWire(existing) });
+    return res.json({ jwt: signJwt({ uid: (existing as any).id, did: deviceId }), user: userToWire(existing) });
   }
 
   const id = uuid();
-  const cosmicName = randomCosmicName();
-  const avatarSeed = uuid().slice(0, 8);
-  db.prepare(
-    `INSERT INTO users (id, device_id, cosmic_name, avatar_seed, created_at) VALUES (?, ?, ?, ?, ?)`
-  ).run(id, deviceId, cosmicName, avatarSeed, Date.now());
-  seedFirstLight(id);
-  const jwt = signJwt({ uid: id, did: deviceId });
-  const u = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
-  res.json({ jwt, user: userToWire(u) });
+  await db.run(
+    'INSERT INTO users (id, device_id, cosmic_name, avatar_seed, created_at) VALUES (?, ?, ?, ?, ?)',
+    [id, deviceId, randomCosmicName(), uuid().slice(0, 8), Date.now()]
+  );
+  await seedFirstLight(id);
+  const u = await db.get('SELECT * FROM users WHERE id = ?', [id]);
+  res.json({ jwt: signJwt({ uid: id, did: deviceId }), user: userToWire(u) });
 });
 
-// ---- Signup with phone + password ----
+// ---- Signup ----
 const signupBody = z.object({
   dialCode: z.string().min(2).max(6).optional(),
   phoneNumber: z.string().min(10).max(20),
@@ -78,32 +76,35 @@ const signupBody = z.object({
   cosmicName: z.string().min(2).max(24).regex(/^[A-Za-z0-9 ]+$/).optional(),
 });
 
-authRouter.post('/signup', signupLimiter, (req, res) => {
+authRouter.post('/signup', signupLimiter, async (req, res) => {
   const parsed = signupBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'bad_body' });
   const phone = resolvePhone(parsed.data);
   if (!phone) return res.status(400).json({ error: 'bad_phone' });
 
-  const existing = db.prepare('SELECT id FROM users WHERE phone_number = ?').get(phone);
+  const existing = await db.get('SELECT id FROM users WHERE phone_number = ?', [phone]);
   if (existing) return res.status(409).json({ error: 'phone_taken' });
 
   const id = uuid();
-  const cosmicName = parsed.data.cosmicName ?? randomCosmicName();
-  const avatarSeed = uuid().slice(0, 8);
-  const passwordHash = hashPassword(parsed.data.password);
-
-  db.prepare(
+  await db.run(
     `INSERT INTO users (id, device_id, cosmic_name, avatar_seed, phone_number, password_hash, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, parsed.data.deviceId, cosmicName, avatarSeed, phone, passwordHash, Date.now());
-  seedFirstLight(id);
-
-  const jwt = signJwt({ uid: id, did: parsed.data.deviceId });
-  const u = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
-  res.json({ jwt, user: userToWire(u) });
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      parsed.data.deviceId,
+      parsed.data.cosmicName ?? randomCosmicName(),
+      uuid().slice(0, 8),
+      phone,
+      hashPassword(parsed.data.password),
+      Date.now(),
+    ]
+  );
+  await seedFirstLight(id);
+  const u = await db.get('SELECT * FROM users WHERE id = ?', [id]);
+  res.json({ jwt: signJwt({ uid: id, did: parsed.data.deviceId }), user: userToWire(u) });
 });
 
-// ---- Login with phone + password ----
+// ---- Login ----
 const loginBody = z.object({
   dialCode: z.string().min(2).max(6).optional(),
   phoneNumber: z.string().min(10).max(20),
@@ -111,21 +112,19 @@ const loginBody = z.object({
   deviceId: z.string().min(8).max(128),
 });
 
-authRouter.post('/login', authLimiter, (req, res) => {
+authRouter.post('/login', authLimiter, async (req, res) => {
   const parsed = loginBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'bad_body' });
   const phone = resolvePhone(parsed.data);
   if (!phone) return res.status(401).json({ error: 'bad_credentials' });
 
-  const u = db.prepare('SELECT * FROM users WHERE phone_number = ?').get(phone) as any;
-  if (!u || !u.password_hash) return res.status(401).json({ error: 'bad_credentials' });
+  const u = (await db.get('SELECT * FROM users WHERE phone_number = ?', [phone])) as any;
+  if (!u?.password_hash) return res.status(401).json({ error: 'bad_credentials' });
   if (!verifyPassword(parsed.data.password, u.password_hash)) {
     return res.status(401).json({ error: 'bad_credentials' });
   }
-  // Update device_id in case they switched phones
-  db.prepare('UPDATE users SET device_id = ? WHERE id = ?').run(parsed.data.deviceId, u.id);
-  const jwt = signJwt({ uid: u.id, did: parsed.data.deviceId });
-  res.json({ jwt, user: userToWire(u) });
+  await db.run('UPDATE users SET device_id = ? WHERE id = ?', [parsed.data.deviceId, u.id]);
+  res.json({ jwt: signJwt({ uid: u.id, did: parsed.data.deviceId }), user: userToWire(u) });
 });
 
 // ---- Attach phone/password to an existing (anonymous) account ----
@@ -135,34 +134,37 @@ const attachBody = z.object({
   password: z.string().min(6).max(72),
 });
 
-authRouter.post('/attach-phone', requireAuth, (req, res) => {
+authRouter.post('/attach-phone', requireAuth, async (req, res) => {
   const parsed = attachBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'bad_body' });
   const { userId } = req as AuthedRequest;
   const phone = resolvePhone(parsed.data);
   if (!phone) return res.status(400).json({ error: 'bad_phone' });
 
-  const taken = db.prepare('SELECT id FROM users WHERE phone_number = ? AND id != ?').get(phone, userId);
+  const taken = await db.get('SELECT id FROM users WHERE phone_number = ? AND id != ?', [phone, userId]);
   if (taken) return res.status(409).json({ error: 'phone_taken' });
 
-  db.prepare('UPDATE users SET phone_number = ?, password_hash = ? WHERE id = ?')
-    .run(phone, hashPassword(parsed.data.password), userId);
+  await db.run('UPDATE users SET phone_number = ?, password_hash = ? WHERE id = ?', [
+    phone,
+    hashPassword(parsed.data.password),
+    userId,
+  ]);
   res.json({ ok: true });
 });
 
 const nameBody = z.object({ name: z.string().min(2).max(24).regex(/^[A-Za-z0-9 ]+$/) });
 
-authRouter.post('/claim-name', requireAuth, (req, res) => {
+authRouter.post('/claim-name', requireAuth, async (req, res) => {
   const parsed = nameBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'bad_name' });
   const { userId } = req as AuthedRequest;
-  db.prepare('UPDATE users SET cosmic_name = ? WHERE id = ?').run(parsed.data.name, userId);
+  await db.run('UPDATE users SET cosmic_name = ? WHERE id = ?', [parsed.data.name, userId]);
   res.json({ ok: true, cosmicName: parsed.data.name });
 });
 
-authRouter.get('/me', requireAuth, (req, res) => {
+authRouter.get('/me', requireAuth, async (req, res) => {
   const { userId } = req as AuthedRequest;
-  const u = db.prepare('SELECT * FROM users WHERE id = ?').get(userId) as any;
+  const u = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
   if (!u) return res.status(404).json({ error: 'not_found' });
   res.json(userToWire(u));
 });

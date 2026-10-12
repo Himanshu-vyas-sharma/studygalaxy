@@ -15,18 +15,21 @@ const strokeSchema = z.object({
 });
 const strokesSchema = z.array(strokeSchema).max(500);
 
-notesRouter.get('/', (req, res) => {
-  const { userId } = req as AuthedRequest;
-  const rows = db
-    .prepare('SELECT id, subject_id, title, strokes_json, created_at, updated_at FROM notes WHERE user_id = ? ORDER BY updated_at DESC')
-    .all(userId) as any[];
+const authed = (req: unknown) => req as AuthedRequest;
+
+notesRouter.get('/', async (req, res) => {
+  const { userId } = authed(req);
+  const rows = await db.all<any>(
+    'SELECT id, subject_id, title, strokes_json, created_at, updated_at FROM notes WHERE user_id = ? ORDER BY updated_at DESC',
+    [userId]
+  );
   res.json(rows.map(r => ({
     id: r.id,
     subjectId: r.subject_id,
     title: r.title,
     strokes: JSON.parse(r.strokes_json),
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
   })));
 });
 
@@ -36,16 +39,23 @@ const createBody = z.object({
   strokes: strokesSchema.optional(),
 });
 
-notesRouter.post('/', (req, res) => {
+notesRouter.post('/', async (req, res) => {
   const parsed = createBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'bad_body' });
-  const { userId } = req as AuthedRequest;
+  const { userId } = authed(req);
   const id = uuid();
   const now = Date.now();
-  db.prepare(
-    'INSERT INTO notes (id, user_id, subject_id, title, strokes_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, userId, parsed.data.subjectId ?? null, parsed.data.title ?? '', JSON.stringify(parsed.data.strokes ?? []), now, now);
-  res.json({ id, subjectId: parsed.data.subjectId ?? null, title: parsed.data.title ?? '', strokes: parsed.data.strokes ?? [], createdAt: now, updatedAt: now });
+  const strokes = parsed.data.strokes ?? [];
+  const title = parsed.data.title ?? '';
+
+  await db.run(
+    'INSERT INTO notes (id, user_id, subject_id, title, strokes_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [id, userId, parsed.data.subjectId ?? null, title, JSON.stringify(strokes), now, now]
+  );
+  res.json({
+    id, subjectId: parsed.data.subjectId ?? null, title, strokes,
+    createdAt: now, updatedAt: now,
+  });
 });
 
 const updateBody = z.object({
@@ -54,26 +64,27 @@ const updateBody = z.object({
   strokes: strokesSchema.optional(),
 });
 
-notesRouter.put('/:id', (req, res) => {
+notesRouter.put('/:id', async (req, res) => {
   const parsed = updateBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'bad_body' });
-  const { userId } = req as AuthedRequest;
-  const note = db.prepare('SELECT id FROM notes WHERE id = ? AND user_id = ?').get(req.params.id, userId);
+  const { userId } = authed(req);
+
+  const note = await db.get('SELECT id FROM notes WHERE id = ? AND user_id = ?', [req.params.id, userId]);
   if (!note) return res.status(404).json({ error: 'not_found' });
-  const now = Date.now();
-  const sets: string[] = ['updated_at = ?'];
-  const vals: (string | number | null)[] = [now];
+
+  const sets = ['updated_at = ?'];
+  const vals: (string | number | null)[] = [Date.now()];
   if (parsed.data.title !== undefined) { sets.push('title = ?'); vals.push(parsed.data.title); }
   if (parsed.data.subjectId !== undefined) { sets.push('subject_id = ?'); vals.push(parsed.data.subjectId); }
   if (parsed.data.strokes !== undefined) { sets.push('strokes_json = ?'); vals.push(JSON.stringify(parsed.data.strokes)); }
-  vals.push(req.params.id);
-  db.prepare(`UPDATE notes SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+
+  await db.run(`UPDATE notes SET ${sets.join(', ')} WHERE id = ?`, [...vals, req.params.id]);
   res.json({ ok: true });
 });
 
-notesRouter.delete('/:id', (req, res) => {
-  const { userId } = req as AuthedRequest;
-  const r = db.prepare('DELETE FROM notes WHERE id = ? AND user_id = ?').run(req.params.id, userId);
+notesRouter.delete('/:id', async (req, res) => {
+  const { userId } = authed(req);
+  const r = await db.run('DELETE FROM notes WHERE id = ? AND user_id = ?', [req.params.id, userId]);
   if (r.changes === 0) return res.status(404).json({ error: 'not_found' });
   res.json({ ok: true });
 });
