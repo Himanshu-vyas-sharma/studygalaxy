@@ -37,6 +37,31 @@ app.use('/stats', statsRouter);
 app.use('/profile', profileRouter);
 app.use('/notes', notesRouter);
 
+/**
+ * Serve the built web app from the same origin as the API, so one deploy hosts
+ * the whole product — no separate static host and no CORS to configure.
+ * Several candidates because the working directory differs between
+ * `tsx src/index.ts` (dev) and `node dist/index.js` (prod).
+ */
+const here = dirname(fileURLToPath(import.meta.url));
+const webRootCandidates = [
+  join(here, '..', '..', 'frontend', 'dist'),      // backend/dist -> repo/frontend/dist
+  join(here, '..', 'frontend', 'dist'),            // backend/src  -> repo/frontend/dist
+  join(process.cwd(), '..', 'frontend', 'dist'),   // cwd = backend
+  join(process.cwd(), 'frontend', 'dist'),         // cwd = repo root
+];
+const webRoot = webRootCandidates.find(p => existsSync(join(p, 'index.html')));
+
+if (webRoot) {
+  app.use(express.static(webRoot, { maxAge: '1h', index: false }));
+  // SPA fallback so client-side routes resolve; API routes already matched above.
+  app.get('*', (_req, res) => res.sendFile(join(webRoot, 'index.html')));
+  console.log(`serving web app from ${webRoot}`);
+} else {
+  console.log('no frontend build found — API only. Looked in:');
+  for (const c of webRootCandidates) console.log(`  ${c}`);
+}
+
 // Any route that throws returns JSON instead of an HTML stack trace.
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('[unhandled]', err);
