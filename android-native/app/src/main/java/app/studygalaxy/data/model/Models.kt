@@ -14,6 +14,7 @@ data class User(
 )
 
 @Serializable data class AuthReply(val jwt: String, val user: User)
+@Serializable data class AttachPhoneReq(val phoneNumber: String, val password: String)
 
 @Serializable data class AnonymousReq(val deviceId: String)
 @Serializable data class SignupReq(val phoneNumber: String, val password: String, val deviceId: String, val cosmicName: String? = null)

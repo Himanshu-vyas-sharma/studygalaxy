@@ -12,6 +12,7 @@ interface Api {
     @POST("/auth/login")        suspend fun login(@Body req: LoginReq): AuthReply
     @POST("/auth/claim-name")   suspend fun claimName(@Body req: ClaimNameReq): ClaimNameReply
     @GET("/auth/me")            suspend fun me(): User
+    @POST("/auth/attach-phone") suspend fun attachPhone(@Body req: AttachPhoneReq): SimpleOk
 
     @GET("/galaxy")                                   suspend fun galaxy(): Galaxy
     @GET("/subjects")                                 suspend fun subjects(): List<Planet>

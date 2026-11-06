@@ -115,6 +115,15 @@ class MainActivity : ComponentActivity() {
                                 onDone = { vm.go(Screen.Home) },
                                 onBack = { vm.go(Screen.AuthLanding) }
                             )
+                            Screen.AttachPhone -> AttachPhoneScreen(
+                                cosmicName = state.user?.cosmicName ?: "you",
+                                onAttach = { phone, pw ->
+                                    suspendCancellableCoroutine<String?> { cont ->
+                                        vm.attachPhone(phone, pw) { err -> cont.resume(err) }
+                                    }
+                                },
+                                onBack = { vm.go(Screen.Home) }
+                            )
                             Screen.NamePicker -> {
                                 val u = state.user
                                 if (u == null) LoadingView() else NamePickerScreen(
@@ -140,7 +149,8 @@ class MainActivity : ComponentActivity() {
                                     onOpenGalaxy = { vm.go(Screen.Galaxy) },
                                     onOpenCircles = { vm.go(Screen.Circles) },
                                     onOpenStats = { vm.go(Screen.Stats) },
-                                    onOpenNotes = { vm.go(Screen.Notes) }
+                                    onOpenNotes = { vm.go(Screen.Notes) },
+                                    onSaveAccount = { vm.go(Screen.AttachPhone) }
                                 )
                             }
                             Screen.SubjectPicker -> SubjectPickerScreen(

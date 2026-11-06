@@ -38,7 +38,8 @@ fun HomeScreen(
     onOpenGalaxy: () -> Unit,
     onOpenCircles: () -> Unit,
     onOpenStats: () -> Unit,
-    onOpenNotes: () -> Unit
+    onOpenNotes: () -> Unit,
+    onSaveAccount: () -> Unit = {}
 ) {
     val haptic = LocalHapticFeedback.current
     val activeSubject = subjects.firstOrNull { it.id == activeSubjectId }
@@ -62,6 +63,31 @@ fun HomeScreen(
             Column(horizontalAlignment = Alignment.End) {
                 Text("Streak", color = White50, fontSize = 11.sp)
                 Text("🔥 ${user.streakDays}d", color = White90, fontSize = 15.sp)
+            }
+        }
+
+        // A guest account exists only on this phone — there is no phone number
+        // or password, so it can never be signed into anywhere else. Say so
+        // plainly rather than letting them discover it on a new device.
+        if (user.phoneNumber == null) {
+            Spacer(Modifier.height(14.dp))
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp)
+                    .background(Color(0x1FFBBF24), RoundedCornerShape(12.dp))
+                    .border(1.dp, Color(0x55FBBF24), RoundedCornerShape(12.dp))
+                    .clickable(onClick = onSaveAccount)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("This galaxy lives only on this phone", color = White90, fontSize = 12.sp)
+                    Text(
+                        "Add a number and password to keep it if you change device.",
+                        color = White50, fontSize = 11.sp
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Text("Save →", color = Color(0xFFFBBF24), fontSize = 12.sp)
             }
         }
 

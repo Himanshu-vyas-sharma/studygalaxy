@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
-enum class Screen { Loading, Onboarding, AuthLanding, Signup, Login, NamePicker, Home, SubjectPicker, SessionSetup, Timer, Galaxy, Circles, Notes, NoteCanvas, Stats, Privacy }
+enum class Screen { Loading, Onboarding, AuthLanding, Signup, Login, AttachPhone, NamePicker, Home, SubjectPicker, SessionSetup, Timer, Galaxy, Circles, Notes, NoteCanvas, Stats, Privacy }
 
 data class AppState(
     val screen: Screen = Screen.Loading,
@@ -154,6 +154,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             screen = Screen.Circles,
             error = err?.let { "Couldn't join with code $code" }
         )
+    }
+
+    /**
+     * Turns a guest account into one that can be signed into elsewhere.
+     * Without this a guest is stranded on a single device forever: the
+     * account has no phone and no password, so /auth/login can never match it.
+     */
+    fun attachPhone(phone: String, password: String, onResult: (String?) -> Unit) = viewModelScope.launch {
+        try {
+            api.attachPhone(AttachPhoneReq(normalizePhone(phone), password))
+            val me = api.me()
+            _state.value = _state.value.copy(user = me, screen = Screen.Home)
+            onResult(null)
+        } catch (e: Throwable) {
+            onResult(mapAuthError(e, signingUp = true))
+        }
     }
 
     /** Opens a live presence socket for a circle. The caller closes it. */
