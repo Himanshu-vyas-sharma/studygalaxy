@@ -25,16 +25,16 @@ fun PrivacyScreen(onBack: () -> Unit) {
         val body = listOf(
             "StudyGalaxy is built so students can focus and study together. We keep what we collect to the minimum.",
             "What we store:",
-            "• Your phone number (if you created an account) — used only as your login ID. We never send SMS.",
-            "• Your password, stored as a one-way scrypt hash. We cannot read it.",
-            "• A random device ID generated on your phone.",
+            "• A random device ID generated on your phone. Nothing identifies you personally.",
             "• Your cosmic name, sessions, subjects, and circles.",
             "What we do NOT collect:",
-            "• No email, no address, no real name.",
+            "• No phone number. No email. No password. No real name.",
             "• No contacts, no location, no camera or mic.",
             "• No ad trackers, no third-party analytics.",
-            "You can delete your account anytime from Settings → Delete account.",
-            "Last updated: 2026-10-11"
+            "Because there is no account to sign in to, your galaxy lives on this " +
+                "device. Android's backup can carry it to a new phone, but if you " +
+                "uninstall with backup turned off, it is gone for good.",
+            "Last updated: 2026-11-06"
         )
         body.forEach {
             Text(it, color = White70, fontSize = 13.sp, lineHeight = 20.sp, modifier = Modifier.padding(vertical = 4.dp))

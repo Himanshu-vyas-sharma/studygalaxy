@@ -7,7 +7,8 @@ A focus app for students. Zero-cost, self-owned, no vendor lock-in.
 ## Stack
 
 - **Frontend:** React 19 + Vite + TypeScript + Tailwind + Framer Motion (PWA, installs to Android home screen)
-- **Backend:** Node 24 + Express + TypeScript + SQLite (better-sqlite3) + WebSockets + JWT auth
+- **Backend:** Node 24 + Express + TypeScript + libSQL/Turso + WebSockets + JWT
+- **Auth:** none. No email, no phone, no password — an account is a device id plus a JWT.
 
 ## Run locally
 

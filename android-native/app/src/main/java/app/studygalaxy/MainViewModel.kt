@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
-enum class Screen { Loading, Onboarding, AuthLanding, Signup, Login, AttachPhone, NamePicker, Home, SubjectPicker, SessionSetup, Timer, Galaxy, Circles, Notes, NoteCanvas, Stats, Privacy }
+enum class Screen { Loading, Onboarding, AuthLanding, NamePicker, Home, SubjectPicker, SessionSetup, Timer, Galaxy, Circles, Notes, NoteCanvas, Stats, Privacy }
 
 data class AppState(
     val screen: Screen = Screen.Loading,
@@ -113,8 +113,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun go(screen: Screen) { _state.value = _state.value.copy(screen = screen) }
 
     /**
-     * Zero-friction entry: no phone, no email, no password. The device gets an
-     * anonymous account it can attach a phone to later if it ever wants one.
+     * The only way in. No phone, no email, no password: the device id becomes
+     * the account, and the JWT carries it from there.
      */
     fun continueAsGuest(onResult: (String?) -> Unit) = viewModelScope.launch {
         val device = TokenStore.getOrCreateDeviceId(ctx)
@@ -129,7 +129,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             consumePendingInvite()
             onResult(null)
         } catch (e: Throwable) {
-            onResult(mapAuthError(e, signingUp = true))
+            onResult(startupError(e))
         }
     }
 
@@ -156,22 +156,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
-    /**
-     * Turns a guest account into one that can be signed into elsewhere.
-     * Without this a guest is stranded on a single device forever: the
-     * account has no phone and no password, so /auth/login can never match it.
-     */
-    fun attachPhone(phone: String, password: String, onResult: (String?) -> Unit) = viewModelScope.launch {
-        try {
-            api.attachPhone(AttachPhoneReq(normalizePhone(phone), password))
-            val me = api.me()
-            _state.value = _state.value.copy(user = me, screen = Screen.Home)
-            onResult(null)
-        } catch (e: Throwable) {
-            onResult(mapAuthError(e, signingUp = true))
-        }
-    }
-
     /** Opens a live presence socket for a circle. The caller closes it. */
     fun openCircleSocket(circleId: String, onReady: (CircleSocket?) -> Unit) = viewModelScope.launch {
         val token = TokenStore.getJwt(ctx)
@@ -181,42 +165,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun loadPresence(circleId: String): List<FocusingMember> =
         runCatching { api.circlePresence(circleId).focusing }.getOrDefault(emptyList())
-
-    fun signup(phone: String, password: String, onResult: (String?) -> Unit) = viewModelScope.launch {
-        val device = TokenStore.getOrCreateDeviceId(ctx)
-        try {
-            val reply = api.signup(SignupReq(normalizePhone(phone), password, device))
-            TokenStore.setJwt(ctx, reply.jwt)
-            _state.value = _state.value.copy(user = reply.user, screen = Screen.NamePicker)
-            syncPendingProfile()
-            reloadSubjects()
-            scheduleReminderFromProfile()
-            prefetchScreens()
-            consumePendingInvite()
-            onResult(null)
-        } catch (e: Throwable) {
-            onResult(mapAuthError(e, signingUp = true))
-        }
-    }
-
-    fun login(phone: String, password: String, onResult: (String?) -> Unit) = viewModelScope.launch {
-        val device = TokenStore.getOrCreateDeviceId(ctx)
-        try {
-            val reply = api.login(LoginReq(normalizePhone(phone), password, device))
-            TokenStore.setJwt(ctx, reply.jwt)
-            TokenStore.markNameClaimed(ctx)
-            _state.value = _state.value.copy(user = reply.user, screen = Screen.Home)
-            syncPendingProfile()
-            reloadSubjects()
-            scheduleReminderFromProfile()
-            prefetchScreens()
-            consumePendingInvite()
-            onResult(null)
-        } catch (e: Throwable) {
-            onResult(mapAuthError(e, signingUp = false))
-        }
-    }
-
 
     fun claimName(name: String, onResult: (Boolean) -> Unit) = viewModelScope.launch {
         try {
@@ -361,40 +309,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         statsCache = null
     }
 
-    /**
-     * The API stores phones as E.164 (+<dial><10 digits>) and rejects anything else.
-     * A bare 10-digit number is assumed to be Indian; a number the user typed with
-     * its own "+<code>" is passed through untouched.
-     */
-    private fun normalizePhone(raw: String): String {
-        val s = raw.replace(Regex("[\\s\\-()]"), "")
-        return if (s.startsWith("+")) s else "+$DEFAULT_DIAL$s"
+    /** Only one request can fail here now, so the messages stay short. */
+    private fun startupError(t: Throwable): String = when {
+        t is java.io.IOException ->
+            "Can't reach StudyGalaxy. Check your internet and try again."
+        (t as? retrofit2.HttpException)?.code() == 429 ->
+            "Too many tries from this device. Wait a few minutes."
+        ((t as? retrofit2.HttpException)?.code() ?: 0) >= 500 ->
+            "StudyGalaxy's server hiccuped. Try again in a moment."
+        else -> "Couldn't start. Try again."
     }
-
-    /**
-     * Retrofit's HttpException message is only "HTTP 400 Bad Request" — the server's
-     * error code lives in the response body, so read that instead of the message.
-     */
-    private fun mapAuthError(t: Throwable, signingUp: Boolean): String {
-        val http = t as? retrofit2.HttpException
-        val code = http?.code()
-        val body = runCatching { http?.response()?.errorBody()?.string() }.getOrNull().orEmpty()
-        return when {
-            t is java.io.IOException ->
-                "Can't reach StudyGalaxy. Check your internet and try again."
-            code == 409 || body.contains("phone_taken", true) ->
-                "This number already has an account. Log in instead."
-            body.contains("bad_phone", true) ->
-                "Enter a valid 10-digit phone number."
-            body.contains("bad_body", true) ->
-                "Check your number and use a password of at least 8 characters."
-            code == 401 -> "Wrong phone number or password."
-            code == 429 -> "Too many attempts. Wait a few minutes and try again."
-            code != null && code >= 500 -> "StudyGalaxy's server hiccuped. Try again in a moment."
-            else -> if (signingUp) "Sign up failed. Try again." else "Login failed. Try again."
-        }
-    }
-
-    private companion object { const val DEFAULT_DIAL = "91" }
 }
-

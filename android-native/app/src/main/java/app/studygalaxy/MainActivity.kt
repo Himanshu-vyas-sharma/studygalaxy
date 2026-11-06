@@ -88,41 +88,11 @@ class MainActivity : ComponentActivity() {
                             Screen.Loading -> LoadingView()
                             Screen.Onboarding -> OnboardingScreen(onDone = { vm.saveOnboarding(it) })
                             Screen.AuthLanding -> AuthLandingScreen(
-                                onCreateAccount = { vm.go(Screen.Signup) },
-                                onLogin = { vm.go(Screen.Login) },
                                 onGuest = {
                                     suspendCancellableCoroutine<String?> { cont ->
                                         vm.continueAsGuest { err -> cont.resume(err) }
                                     }
                                 }
-                            )
-                            Screen.Signup -> SignupScreen(
-                                onSignup = { phone, pw ->
-                                    suspendCancellableCoroutine<String?> { cont ->
-                                        vm.signup(phone, pw) { err -> cont.resume(err) }
-                                    }
-                                },
-                                onDone = { vm.go(Screen.NamePicker) },
-                                onBack = { vm.go(Screen.AuthLanding) },
-                                onLoginInstead = { vm.go(Screen.Login) }
-                            )
-                            Screen.Login -> LoginScreen(
-                                onLogin = { phone, pw ->
-                                    suspendCancellableCoroutine<String?> { cont ->
-                                        vm.login(phone, pw) { err -> cont.resume(err) }
-                                    }
-                                },
-                                onDone = { vm.go(Screen.Home) },
-                                onBack = { vm.go(Screen.AuthLanding) }
-                            )
-                            Screen.AttachPhone -> AttachPhoneScreen(
-                                cosmicName = state.user?.cosmicName ?: "you",
-                                onAttach = { phone, pw ->
-                                    suspendCancellableCoroutine<String?> { cont ->
-                                        vm.attachPhone(phone, pw) { err -> cont.resume(err) }
-                                    }
-                                },
-                                onBack = { vm.go(Screen.Home) }
                             )
                             Screen.NamePicker -> {
                                 val u = state.user
@@ -149,8 +119,7 @@ class MainActivity : ComponentActivity() {
                                     onOpenGalaxy = { vm.go(Screen.Galaxy) },
                                     onOpenCircles = { vm.go(Screen.Circles) },
                                     onOpenStats = { vm.go(Screen.Stats) },
-                                    onOpenNotes = { vm.go(Screen.Notes) },
-                                    onSaveAccount = { vm.go(Screen.AttachPhone) }
+                                    onOpenNotes = { vm.go(Screen.Notes) }
                                 )
                             }
                             Screen.SubjectPicker -> SubjectPickerScreen(

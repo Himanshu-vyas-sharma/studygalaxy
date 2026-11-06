@@ -72,29 +72,13 @@ export function AuthLanding() {
           >
             {busy ? 'Opening your galaxy…' : 'Start focusing'}
           </motion.button>
-          <p className="text-xs text-white/50">No email. No phone. No password.</p>
+          <p className="text-xs text-white/50 leading-relaxed">
+            No email. No phone. No password.
+            <br />
+            Nothing to remember, nothing to leak.
+          </p>
 
           {err && <p className="text-xs text-red-300">{err}</p>}
-
-          <p className="text-xs text-white/50 pt-4">Want your galaxy on more than one device?</p>
-          <div className="flex gap-3">
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setScreen('signup')}
-              className="flex-1 py-3 rounded-2xl text-sm bg-white/10 border border-white/15"
-            >
-              Create account
-            </motion.button>
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setScreen('login')}
-              className="flex-1 py-3 rounded-2xl text-sm bg-white/10 border border-white/15"
-            >
-              Log in
-            </motion.button>
-          </div>
         </motion.div>
       </motion.div>
     </div>

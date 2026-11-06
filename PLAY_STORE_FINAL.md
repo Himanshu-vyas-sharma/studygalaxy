@@ -6,7 +6,7 @@ Everything on your side is ready. You handle the Google account + $25 fee + ID v
 
 - Native Kotlin + Jetpack Compose app with all v2 features
 - Release keystore generated and committed-safe at `android-native/keystore/studygalaxy-release.jks`
-- Keystore password: `StudyGalaxy2026!`  — key alias: `studygalaxy` — key password: same
+- Keystore credentials live in `android-native/keystore.properties` (git-ignored). Never commit them.
 - Signed release AAB will land at: `android-native/app/build/outputs/bundle/release/app-release.aab`
 - Store listing copy ready at `STORE_LISTING.md`
 - Icons + feature graphic ready at `frontend/public/icons/`
@@ -25,7 +25,7 @@ Put copies in:
 
 **If you lose this file, you can NEVER update your app on Play Store** — you'd have to re-publish under a new package name and lose all your users. This is the #1 mistake Indian devs make. Don't be that dev.
 
-Also save the password `StudyGalaxy2026!` somewhere permanent (phone notes, email draft, password manager).
+Also save the contents of `android-native/keystore.properties` somewhere permanent (password manager, offline backup). Never put it in the repo.
 
 ## Step 1 — Deploy backend first (free, ~10 min)
 
@@ -102,7 +102,7 @@ No.
 
 Click **Start** → declare:
 
-- **Personal info → Phone number**: Yes, collected, processed ephemerally, linked to user, required for app functionality (login identifier)
+- **Personal info → Phone number**: No. StudyGalaxy has no sign-in and collects no phone number, email or password.
 - **Personal info → User IDs**: Yes, collected, linked to user, required
 - **App info → App interactions**: Yes, collected, linked, required (focus sessions, streaks)
 - **App info → Other user-generated content**: Yes (notes), linked, optional

@@ -9,16 +9,12 @@ data class User(
     val avatarSeed: String,
     val level: Int,
     val totalFocusMin: Int,
-    val streakDays: Int,
-    val phoneNumber: String? = null
+    val streakDays: Int
 )
 
 @Serializable data class AuthReply(val jwt: String, val user: User)
-@Serializable data class AttachPhoneReq(val phoneNumber: String, val password: String)
 
 @Serializable data class AnonymousReq(val deviceId: String)
-@Serializable data class SignupReq(val phoneNumber: String, val password: String, val deviceId: String, val cosmicName: String? = null)
-@Serializable data class LoginReq(val phoneNumber: String, val password: String, val deviceId: String)
 @Serializable data class ClaimNameReq(val name: String)
 @Serializable data class ClaimNameReply(val ok: Boolean, val cosmicName: String)
 
