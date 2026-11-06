@@ -35,9 +35,18 @@ object TokenStore {
     suspend fun getOnboardingJson(ctx: Context): String? =
         ctx.dataStore.data.firstOrNull()?.get(ONBOARDING_JSON)
 
-    suspend fun getJwt(ctx: Context): String? = ctx.dataStore.data.firstOrNull()?.get(JWT)
+    /**
+     * In-memory copy of the token so the network layer never has to hit disk
+     * on the request path. Kept in step by getJwt/setJwt.
+     */
+    @Volatile var cachedJwt: String? = null
+        private set
+
+    suspend fun getJwt(ctx: Context): String? =
+        ctx.dataStore.data.firstOrNull()?.get(JWT).also { cachedJwt = it }
 
     suspend fun setJwt(ctx: Context, token: String?) {
+        cachedJwt = token
         ctx.dataStore.edit { prefs ->
             if (token == null) prefs.remove(JWT) else prefs[JWT] = token
         }
@@ -56,6 +65,7 @@ object TokenStore {
     }
 
     suspend fun clear(ctx: Context) {
+        cachedJwt = null
         ctx.dataStore.edit { it.clear() }
     }
 }

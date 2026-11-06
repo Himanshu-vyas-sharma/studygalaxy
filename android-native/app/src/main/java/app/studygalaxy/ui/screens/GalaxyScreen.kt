@@ -28,12 +28,14 @@ fun GalaxyScreen(
     onBack: () -> Unit
 ) {
     var data by remember { mutableStateOf<Galaxy?>(null) }
-    var t by remember { mutableStateOf(0f) }
+    // Float-specialised and read only inside the Canvas draw lambda, so each
+    // frame invalidates drawing rather than recomposing the screen.
+    val tState = remember { mutableFloatStateOf(0f) }
 
     LaunchedEffect(Unit) { data = loadGalaxy() }
     LaunchedEffect(Unit) {
-        val start = System.nanoTime()
-        while (isActive) withFrameNanos { t = ((it - start) / 1_000_000_000f) }
+        val start = withFrameNanos { it }
+        while (isActive) withFrameNanos { tState.floatValue = (it - start) / 1_000_000_000f }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -79,6 +81,7 @@ fun GalaxyScreen(
 
             Spacer(Modifier.height(8.dp))
             Canvas(modifier = Modifier.fillMaxSize()) {
+                val t = tState.floatValue
                 val w = size.width; val h = size.height
                 val cx = w / 2; val cy = h / 2
                 val orbitR = min(w, h) * 0.32f

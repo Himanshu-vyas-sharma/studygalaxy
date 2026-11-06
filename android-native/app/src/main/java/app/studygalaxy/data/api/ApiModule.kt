@@ -19,8 +19,11 @@ object ApiModule {
         impl?.let { return it }
         synchronized(this) {
             impl?.let { return it }
+            // The token is read from DataStore once and then kept in memory.
+            // Doing runBlocking { getJwt() } inside the interceptor put a disk
+            // read on the critical path of *every* request.
             val authInterceptor = Interceptor { chain ->
-                val token = runBlocking { TokenStore.getJwt(ctx) }
+                val token = TokenStore.cachedJwt ?: runBlocking { TokenStore.getJwt(ctx) }
                 val req = chain.request().newBuilder().apply {
                     if (token != null) header("Authorization", "Bearer $token")
                 }.build()
