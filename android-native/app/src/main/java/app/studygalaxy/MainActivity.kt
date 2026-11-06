@@ -75,9 +75,12 @@ class MainActivity : ComponentActivity() {
                     AnimatedContent(
                         modifier = Modifier.safeDrawingPadding(),
                         targetState = state.screen,
+                        // Kept short: a 350ms transition on every navigation is
+                        // a third of a second of perceived lag before the
+                        // screen is even usable.
                         transitionSpec = {
-                            (fadeIn(tween(350)) + slideInVertically(tween(350)) { it / 6 }) togetherWith
-                                (fadeOut(tween(300)) + slideOutVertically(tween(300)) { -it / 6 })
+                            (fadeIn(tween(160)) + slideInVertically(tween(160)) { it / 10 }) togetherWith
+                                (fadeOut(tween(120)) + slideOutVertically(tween(120)) { -it / 10 })
                         },
                         label = "screen"
                     ) { screen ->

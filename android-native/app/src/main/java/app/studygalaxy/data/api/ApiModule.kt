@@ -32,9 +32,16 @@ object ApiModule {
             val logging = HttpLoggingInterceptor().apply {
                 level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
             }
+            // The free-tier host sleeps when idle and can take tens of seconds
+            // to wake, so the read timeout has to outlast a cold start or the
+            // first request of the day always fails.
             val client = OkHttpClient.Builder()
                 .addInterceptor(authInterceptor)
                 .addInterceptor(logging)
+                .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(40, java.util.concurrent.TimeUnit.SECONDS)
+                .writeTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+                .retryOnConnectionFailure(true)
                 .build()
             val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
             val retrofit = Retrofit.Builder()

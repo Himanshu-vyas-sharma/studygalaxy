@@ -48,6 +48,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 )
                 reloadSubjects()
                 scheduleReminderFromProfile()
+                prefetchScreens()
                 consumePendingInvite()
                 return@launch
             } catch (_: Throwable) {
@@ -124,6 +125,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             syncPendingProfile()
             reloadSubjects()
             scheduleReminderFromProfile()
+            prefetchScreens()
             consumePendingInvite()
             onResult(null)
         } catch (e: Throwable) {
@@ -173,6 +175,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             syncPendingProfile()
             reloadSubjects()
             scheduleReminderFromProfile()
+            prefetchScreens()
             consumePendingInvite()
             onResult(null)
         } catch (e: Throwable) {
@@ -190,6 +193,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             syncPendingProfile()
             reloadSubjects()
             scheduleReminderFromProfile()
+            prefetchScreens()
             consumePendingInvite()
             onResult(null)
         } catch (e: Throwable) {
@@ -247,6 +251,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 user = me, activeSessionId = null, activeSessionEndsAtMs = null, activeTodos = emptyList()
             )
             reloadSubjects()
+            invalidateCaches()
             // Finishing a session resets the idle clock — no nagging after work done.
             app.studygalaxy.notifications.Nudges.markActive(ctx)
         } catch (_: Throwable) {}
@@ -255,6 +260,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun breakSession() {
         val id = _state.value.activeSessionId ?: return
         try { api.breakSession(BreakSessionReq(id)) } catch (_: Throwable) {}
+        invalidateCaches() // a black hole is new galaxy state
         _state.value = _state.value.copy(
             activeSessionId = null, activeSessionEndsAtMs = null, activeTodos = emptyList()
         )
@@ -289,13 +295,55 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         } catch (_: Throwable) { false }
     }
 
-    suspend fun loadGalaxy(): Galaxy? = runCatching { api.galaxy() }.getOrNull()
-    suspend fun loadCircles(): List<Circle> = runCatching { api.circles() }.getOrDefault(emptyList())
+    // ---- Screen data caches ----
+    // Every screen used to open on a cold network call. Against a free-tier
+    // host roughly a second away, that is a second of "Loading…" every single
+    // time you open Galaxy. Cached data is returned instantly and refreshed in
+    // the background; prefetchScreens() fills the cache right after sign-in so
+    // even the first visit is immediate.
+    private var galaxyCache: Galaxy? = null
+    private var circlesCache: List<Circle>? = null
+    private var statsCache: WeeklyStats? = null
+
+    /** Warms the caches so the first open of each screen paints instantly. */
+    private fun prefetchScreens() = viewModelScope.launch {
+        runCatching { api.galaxy() }.getOrNull()?.let { galaxyCache = it }
+        runCatching { api.circles() }.getOrNull()?.let { circlesCache = it }
+        runCatching { api.statsWeekly() }.getOrNull()?.let { statsCache = it }
+    }
+
+    suspend fun loadGalaxy(): Galaxy? {
+        galaxyCache?.let { cached ->
+            viewModelScope.launch { runCatching { api.galaxy() }.getOrNull()?.let { galaxyCache = it } }
+            return cached
+        }
+        return runCatching { api.galaxy() }.getOrNull()?.also { galaxyCache = it }
+    }
+
+    suspend fun loadCircles(): List<Circle> {
+        circlesCache?.let { cached ->
+            viewModelScope.launch { runCatching { api.circles() }.getOrNull()?.let { circlesCache = it } }
+            return cached
+        }
+        return runCatching { api.circles() }.getOrDefault(emptyList()).also { circlesCache = it }
+    }
     suspend fun createCircle(name: String): Circle? = runCatching { api.createCircle(CreateCircleReq(name)) }.getOrNull()
     suspend fun joinCircle(code: String): String? = runCatching {
         api.joinCircle(JoinCircleReq(code)); null as String?
     }.getOrElse { "Invalid code" }
-    suspend fun loadStats(): WeeklyStats? = runCatching { api.statsWeekly() }.getOrNull()
+    suspend fun loadStats(): WeeklyStats? {
+        statsCache?.let { cached ->
+            viewModelScope.launch { runCatching { api.statsWeekly() }.getOrNull()?.let { statsCache = it } }
+            return cached
+        }
+        return runCatching { api.statsWeekly() }.getOrNull()?.also { statsCache = it }
+    }
+
+    /** A finished session changes the galaxy and the stats, so drop the stale copies. */
+    private fun invalidateCaches() {
+        galaxyCache = null
+        statsCache = null
+    }
 
     /**
      * The API stores phones as E.164 (+<dial><10 digits>) and rejects anything else.
