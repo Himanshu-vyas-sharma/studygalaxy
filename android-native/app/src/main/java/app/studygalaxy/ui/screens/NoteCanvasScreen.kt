@@ -28,13 +28,42 @@ import androidx.compose.ui.unit.sp
 import app.studygalaxy.data.model.StrokeDto
 import app.studygalaxy.ui.theme.*
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
-private data class LocalStroke(
-    val color: String,
+/**
+ * One stroke, with its Path built up as the finger moves.
+ *
+ * The old version rebuilt a Path from every point of every stroke on every
+ * frame, which makes drawing cost grow with the square of the note's size: by
+ * a few hundred points each frame was replaying the whole drawing. Here the
+ * Path is extended by one lineTo per new point and never rebuilt, and the
+ * colour is parsed once instead of re-parsing the hex string per frame.
+ */
+private class LocalStroke(
+    val colorHex: String,
     val width: Float,
     val erase: Boolean,
-    val points: MutableList<Offset>
-)
+    val points: MutableList<Offset> = mutableListOf(),
+) {
+    val color: Color = if (erase) Color.Black else parseHex(colorHex)
+    val path: Path = Path()
+
+    fun addPoint(p: Offset) {
+        // Skip points too close to the last one: they cost a path segment but
+        // add nothing visible, and touch events arrive faster than pixels move.
+        val last = points.lastOrNull()
+        if (last != null && abs(p.x - last.x) < 0.7f && abs(p.y - last.y) < 0.7f) return
+        if (points.isEmpty()) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
+        points.add(p)
+    }
+
+    companion object {
+        fun from(dto: StrokeDto): LocalStroke =
+            LocalStroke(dto.color, dto.width, dto.erase).apply {
+                dto.points.forEach { addPoint(Offset(it[0], it[1])) }
+            }
+    }
+}
 
 private val PALETTE = listOf(
     "#FFFFFF", "#FBBF24", "#F472B6", "#A78BFA",
@@ -42,6 +71,7 @@ private val PALETTE = listOf(
 )
 private val WIDTHS = listOf(3f, 7f, 14f)
 
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun NoteCanvasScreen(
     initialStrokes: List<StrokeDto>,
@@ -51,12 +81,19 @@ fun NoteCanvasScreen(
 ) {
     val haptic = LocalHapticFeedback.current
     val strokes = remember {
-        mutableStateListOf<LocalStroke>().also {
-            it.addAll(initialStrokes.map { s ->
-                LocalStroke(s.color, s.width, s.erase, s.points.map { p -> Offset(p[0], p[1]) }.toMutableList())
-            })
+        mutableStateListOf<LocalStroke>().also { list ->
+            list.addAll(initialStrokes.map { LocalStroke.from(it) })
         }
     }
+    /**
+     * Bumped for each new point. Appending to a stroke's plain point list is
+     * invisible to Compose, so without this the in-progress stroke did not
+     * appear until some *other* state changed — which is why ink showed up
+     * seconds late, usually only once the next stroke began.
+     * It is read inside the Canvas draw lambda, so a bump invalidates drawing
+     * only and never triggers recomposition.
+     */
+    val revision = remember { mutableIntStateOf(0) }
     val undone = remember { mutableStateListOf<LocalStroke>() }
     var color by remember { mutableStateOf(PALETTE[0]) }
     var width by remember { mutableStateOf(WIDTHS[0]) }
@@ -93,7 +130,7 @@ fun NoteCanvasScreen(
                     saving = true
                     scope.launch {
                         val payload = strokes.map { s ->
-                            StrokeDto(s.color, s.width, s.erase, s.points.map { listOf(it.x, it.y) })
+                            StrokeDto(s.colorHex, s.width, s.erase, s.points.map { listOf(it.x, it.y) })
                         }
                         if (onSave(title, payload)) onBack()
                         saving = false
@@ -115,13 +152,22 @@ fun NoteCanvasScreen(
                 .pointerInput(erase, color, width) {
                     detectDragGestures(
                         onDragStart = { pos ->
-                            val s = LocalStroke(color, width, erase, mutableListOf(pos))
+                            val s = LocalStroke(color, width, erase).apply { addPoint(pos) }
                             current = s
                             strokes.add(s)
                             undone.clear()
+                            revision.intValue++
                         },
                         onDrag = { change, _ ->
-                            current?.points?.add(change.position)
+                            val s = current
+                            if (s != null) {
+                                // Touch events batch several samples per frame;
+                                // replaying them keeps fast strokes smooth
+                                // instead of cutting corners.
+                                change.historical.forEach { s.addPoint(it.position) }
+                                s.addPoint(change.position)
+                                revision.intValue++
+                            }
                             change.consume()
                         },
                         onDragEnd = { current = null },
@@ -130,19 +176,12 @@ fun NoteCanvasScreen(
                 }
         ) {
             Canvas(Modifier.fillMaxSize()) {
+                revision.intValue // subscribe: redraw as points are added
                 strokes.forEach { s ->
                     if (s.points.size < 2) return@forEach
-                    val path = Path().apply {
-                        val p0 = s.points.first()
-                        moveTo(p0.x, p0.y)
-                        for (i in 1 until s.points.size) {
-                            val p = s.points[i]
-                            lineTo(p.x, p.y)
-                        }
-                    }
                     drawPath(
-                        path = path,
-                        color = if (s.erase) Color.Black else parseHex(s.color),
+                        path = s.path,
+                        color = s.color,
                         style = Stroke(width = s.width, cap = StrokeCap.Round, join = StrokeJoin.Round)
                     )
                 }
