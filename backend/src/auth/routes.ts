@@ -71,7 +71,7 @@ authRouter.post('/anonymous', async (req, res) => {
 const signupBody = z.object({
   dialCode: z.string().min(2).max(6).optional(),
   phoneNumber: z.string().min(10).max(20),
-  password: z.string().min(6).max(72),
+  password: z.string().min(8).max(72),
   deviceId: z.string().min(8).max(128),
   cosmicName: z.string().min(2).max(24).regex(/^[A-Za-z0-9 ]+$/).optional(),
 });
@@ -105,6 +105,8 @@ authRouter.post('/signup', signupLimiter, async (req, res) => {
 });
 
 // ---- Login ----
+// New passwords must be 8+, but login stays at 6 so anyone who signed up
+// under the old rule can still get into their account.
 const loginBody = z.object({
   dialCode: z.string().min(2).max(6).optional(),
   phoneNumber: z.string().min(10).max(20),
@@ -131,7 +133,7 @@ authRouter.post('/login', authLimiter, async (req, res) => {
 const attachBody = z.object({
   dialCode: z.string().min(2).max(6).optional(),
   phoneNumber: z.string().min(10).max(20),
-  password: z.string().min(6).max(72),
+  password: z.string().min(8).max(72),
 });
 
 authRouter.post('/attach-phone', requireAuth, async (req, res) => {

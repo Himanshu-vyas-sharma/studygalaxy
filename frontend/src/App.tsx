@@ -25,6 +25,26 @@ export function App() {
   const setUser = useStore(s => s.setUser);
   const user = useStore(s => s.user);
 
+  // An invite link (/join/ABC123) parks the code until we have an account.
+  useEffect(() => {
+    const m = window.location.pathname.match(/^\/join\/([A-Za-z0-9]{4,10})\/?$/);
+    if (m) {
+      localStorage.setItem('sg.pendingInvite', m[1].toUpperCase());
+      window.history.replaceState({}, '', '/');
+    }
+  }, []);
+
+  // Once signed in (guest counts), redeem any parked invite.
+  useEffect(() => {
+    if (!user) return;
+    const code = localStorage.getItem('sg.pendingInvite');
+    if (!code) return;
+    localStorage.removeItem('sg.pendingInvite');
+    api.joinCircle(code)
+      .then(() => setScreen('circles'))
+      .catch(() => { /* bad or expired code — leave the user where they are */ });
+  }, [user, setScreen]);
+
   // Bootstrap: if we have a token, try to resume. Else land on auth.
   useEffect(() => {
     (async () => {

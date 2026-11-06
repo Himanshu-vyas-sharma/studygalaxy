@@ -33,7 +33,57 @@ data class User(
 @Serializable data class BreakSessionReq(val sessionId: String)
 @Serializable data class SimpleOk(val ok: Boolean)
 
-@Serializable data class Circle(val id: String, val name: String, val inviteCode: String? = null)
+@Serializable data class Circle(
+    val id: String,
+    val name: String,
+    val inviteCode: String? = null,
+    val memberCount: Int = 0,
+    val focusing: List<String> = emptyList()
+)
+
+/** One member of a circle who is in a live focus session right now. */
+@Serializable data class FocusingMember(
+    val userId: String,
+    val cosmicName: String,
+    val avatarSeed: String? = null,
+    val startedAt: Long = 0L,
+    val plannedMin: Int = 0,
+    val endsAt: Long = 0L,
+    val intention: String? = null
+)
+
+/** A `presence` frame pushed over the circle socket. */
+@Serializable data class PresenceFrame(
+    val type: String = "presence",
+    val circleId: String? = null,
+    val online: List<String> = emptyList(),
+    val focusing: List<FocusingMember> = emptyList()
+)
+
+/** Any non-presence frame: session_start, session_complete, session_broken. */
+@Serializable data class CircleEventFrame(
+    val type: String = "event",
+    val cosmicName: String? = null,
+    val at: Long = 0L,
+    val actualMin: Int? = null,
+    val plannedMin: Int? = null,
+    val intention: String? = null
+)
+
+@Serializable data class PresenceReply(val focusing: List<FocusingMember> = emptyList())
+
+@Serializable data class FriendFocusing(
+    val userId: String,
+    val cosmicName: String,
+    val circleName: String? = null,
+    val endsAt: Long = 0L,
+    val intention: String? = null
+)
+
+@Serializable data class FriendsFocusingReply(
+    val youAreFocusing: Boolean = false,
+    val friends: List<FriendFocusing> = emptyList()
+)
 @Serializable data class CreateCircleReq(val name: String)
 @Serializable data class JoinCircleReq(val inviteCode: String)
 

@@ -58,7 +58,8 @@ fun LoginScreen(
             OutlinedTextField(
                 value = phone,
                 onValueChange = { phone = it.filter { c -> c.isDigit() || c == '+' || c == ' ' || c == '-' }.take(20) },
-                placeholder = { Text("+91 98765 43210", color = White30) },
+                placeholder = { Text("98765 43210", color = White30) },
+                leadingIcon = { Text("+91", color = White70, fontSize = 14.sp, modifier = Modifier.padding(start = 12.dp)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = White90, unfocusedTextColor = White90,

@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.studygalaxy.data.api.ApiModule
+import app.studygalaxy.data.api.CircleSocket
 import app.studygalaxy.data.local.TokenStore
 import app.studygalaxy.data.model.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,6 +48,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 )
                 reloadSubjects()
                 scheduleReminderFromProfile()
+                consumePendingInvite()
                 return@launch
             } catch (_: Throwable) {
                 TokenStore.setJwt(ctx, null)
@@ -109,34 +111,89 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun go(screen: Screen) { _state.value = _state.value.copy(screen = screen) }
 
-    fun signup(phone: String, password: String, onResult: (String?) -> Unit) = viewModelScope.launch {
+    /**
+     * Zero-friction entry: no phone, no email, no password. The device gets an
+     * anonymous account it can attach a phone to later if it ever wants one.
+     */
+    fun continueAsGuest(onResult: (String?) -> Unit) = viewModelScope.launch {
         val device = TokenStore.getOrCreateDeviceId(ctx)
         try {
-            val reply = api.signup(SignupReq(phone, password, device))
+            val reply = api.anonymous(AnonymousReq(device))
             TokenStore.setJwt(ctx, reply.jwt)
             _state.value = _state.value.copy(user = reply.user, screen = Screen.NamePicker)
             syncPendingProfile()
             reloadSubjects()
             scheduleReminderFromProfile()
+            consumePendingInvite()
             onResult(null)
         } catch (e: Throwable) {
-            onResult(mapAuthError(e))
+            onResult(mapAuthError(e, signingUp = true))
+        }
+    }
+
+    /**
+     * An invite link was tapped. Remember the code; once the user has an
+     * account (guest counts) we join the circle and drop them on Circles.
+     */
+    fun handleInviteCode(code: String) = viewModelScope.launch {
+        val clean = code.uppercase().filter { it.isLetterOrDigit() }.take(10)
+        if (clean.isEmpty()) return@launch
+        pendingInvite = clean
+        if (_state.value.user != null) consumePendingInvite()
+    }
+
+    private var pendingInvite: String? = null
+
+    private fun consumePendingInvite() = viewModelScope.launch {
+        val code = pendingInvite ?: return@launch
+        pendingInvite = null
+        val err = joinCircle(code)
+        _state.value = _state.value.copy(
+            screen = Screen.Circles,
+            error = err?.let { "Couldn't join with code $code" }
+        )
+    }
+
+    /** Opens a live presence socket for a circle. The caller closes it. */
+    fun openCircleSocket(circleId: String, onReady: (CircleSocket?) -> Unit) = viewModelScope.launch {
+        val token = TokenStore.getJwt(ctx)
+        if (token == null) { onReady(null); return@launch }
+        onReady(CircleSocket(viewModelScope, circleId, token).also { it.connect() })
+    }
+
+    suspend fun loadPresence(circleId: String): List<FocusingMember> =
+        runCatching { api.circlePresence(circleId).focusing }.getOrDefault(emptyList())
+
+    fun signup(phone: String, password: String, onResult: (String?) -> Unit) = viewModelScope.launch {
+        val device = TokenStore.getOrCreateDeviceId(ctx)
+        try {
+            val reply = api.signup(SignupReq(normalizePhone(phone), password, device))
+            TokenStore.setJwt(ctx, reply.jwt)
+            _state.value = _state.value.copy(user = reply.user, screen = Screen.NamePicker)
+            syncPendingProfile()
+            reloadSubjects()
+            scheduleReminderFromProfile()
+            consumePendingInvite()
+            onResult(null)
+        } catch (e: Throwable) {
+            onResult(mapAuthError(e, signingUp = true))
         }
     }
 
     fun login(phone: String, password: String, onResult: (String?) -> Unit) = viewModelScope.launch {
         val device = TokenStore.getOrCreateDeviceId(ctx)
         try {
-            val reply = api.login(LoginReq(phone, password, device))
+            val reply = api.login(LoginReq(normalizePhone(phone), password, device))
             TokenStore.setJwt(ctx, reply.jwt)
             TokenStore.markNameClaimed(ctx)
             _state.value = _state.value.copy(user = reply.user, screen = Screen.Home)
             syncPendingProfile()
             reloadSubjects()
             scheduleReminderFromProfile()
+            consumePendingInvite()
             onResult(null)
-        } catch (_: Throwable) {
-            onResult("Wrong phone or password")
+        } catch (e: Throwable) {
+            onResult(mapAuthError(e, signingUp = false))
         }
     }
 
@@ -190,6 +247,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 user = me, activeSessionId = null, activeSessionEndsAtMs = null, activeTodos = emptyList()
             )
             reloadSubjects()
+            // Finishing a session resets the idle clock — no nagging after work done.
+            app.studygalaxy.notifications.Nudges.markActive(ctx)
         } catch (_: Throwable) {}
     }
 
@@ -238,13 +297,40 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }.getOrElse { "Invalid code" }
     suspend fun loadStats(): WeeklyStats? = runCatching { api.statsWeekly() }.getOrNull()
 
-    private fun mapAuthError(t: Throwable): String {
-        val m = t.message.orEmpty()
+    /**
+     * The API stores phones as E.164 (+<dial><10 digits>) and rejects anything else.
+     * A bare 10-digit number is assumed to be Indian; a number the user typed with
+     * its own "+<code>" is passed through untouched.
+     */
+    private fun normalizePhone(raw: String): String {
+        val s = raw.replace(Regex("[\\s\\-()]"), "")
+        return if (s.startsWith("+")) s else "+$DEFAULT_DIAL$s"
+    }
+
+    /**
+     * Retrofit's HttpException message is only "HTTP 400 Bad Request" — the server's
+     * error code lives in the response body, so read that instead of the message.
+     */
+    private fun mapAuthError(t: Throwable, signingUp: Boolean): String {
+        val http = t as? retrofit2.HttpException
+        val code = http?.code()
+        val body = runCatching { http?.response()?.errorBody()?.string() }.getOrNull().orEmpty()
         return when {
-            m.contains("409", true) || m.contains("phone_taken", true) -> "This phone number already has an account"
-            m.contains("bad_phone", true) -> "Enter a valid phone number"
-            else -> "Sign up failed. Try again."
+            t is java.io.IOException ->
+                "Can't reach StudyGalaxy. Check your internet and try again."
+            code == 409 || body.contains("phone_taken", true) ->
+                "This number already has an account. Log in instead."
+            body.contains("bad_phone", true) ->
+                "Enter a valid 10-digit phone number."
+            body.contains("bad_body", true) ->
+                "Check your number and use a password of at least 8 characters."
+            code == 401 -> "Wrong phone number or password."
+            code == 429 -> "Too many attempts. Wait a few minutes and try again."
+            code != null && code >= 500 -> "StudyGalaxy's server hiccuped. Try again in a moment."
+            else -> if (signingUp) "Sign up failed. Try again." else "Login failed. Try again."
         }
     }
+
+    private companion object { const val DEFAULT_DIAL = "91" }
 }
 

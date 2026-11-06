@@ -10,3 +10,29 @@ build/
 *.log
 .vite/
 coverage/
+
+# --- Secrets: never commit signing material ---
+*.jks
+*.keystore
+*.jks.bak
+keystore.properties
+android-native/keystore/
+!android-native/keystore.properties.example
+
+# --- Android local/build state ---
+local.properties
+.gradle/
+.kotlin/
+android-native/.gradle/
+android-native/.kotlin/
+android-native/build/
+android-native/app/build/
+*.apk
+*.aab
+captures/
+.cxx/
+
+# --- IDE ---
+.idea/
+*.iml
+.vscode/

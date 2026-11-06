@@ -51,13 +51,16 @@ export const COUNTRIES: Country[] = [
 
 const DIALS = new Set(COUNTRIES.map(c => c.dial));
 
-/** Accepts a dial code and a 10-digit national number; returns E.164 or null. */
+/**
+ * Accepts a dial code and a 10-digit national number; returns E.164 or null.
+ * Any digit 0-9 may lead: numbering plans differ by country and we do not
+ * want to lock out real numbers.
+ */
 export function toE164(dial: string, national: string): string | null {
   const d = dial.trim();
   const n = national.replace(/\D/g, '');
   if (!DIALS.has(d)) return null;
   if (n.length !== 10) return null;
-  if (n.startsWith('0')) return null;
   return `${d}${n}`;
 }
 
@@ -68,7 +71,7 @@ export function normalizeE164(raw: string): string | null {
   for (const c of COUNTRIES) {
     if (s.startsWith(c.dial)) {
       const national = s.slice(c.dial.length);
-      if (/^\d{10}$/.test(national) && !national.startsWith('0')) return s;
+      if (/^\d{10}$/.test(national)) return s;
     }
   }
   return null;

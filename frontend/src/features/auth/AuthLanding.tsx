@@ -1,8 +1,31 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useStore } from '../../store';
+import { api, storeToken } from '../../data/api';
+import { getOrCreateDeviceId } from '../../lib/uuid';
 
 export function AuthLanding() {
   const setScreen = useStore(s => s.setScreen);
+  const setUser = useStore(s => s.setUser);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Zero-friction entry: no email, no phone, no password.
+  const startAsGuest = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const { jwt, user } = await api.authAnonymous(getOrCreateDeviceId());
+      storeToken(jwt);
+      setUser(user);
+      setScreen('namePicker');
+    } catch {
+      setErr("Couldn't reach StudyGalaxy. Check your connection.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 relative">
       <motion.div
@@ -43,19 +66,35 @@ export function AuthLanding() {
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.95 }}
-            onClick={() => setScreen('signup')}
-            className="w-full py-4 rounded-2xl font-semibold text-lg bg-gradient-to-r from-violet-500 to-fuchsia-500 shadow-lg shadow-violet-500/30"
+            disabled={busy}
+            onClick={startAsGuest}
+            className="w-full py-4 rounded-2xl font-semibold text-lg bg-gradient-to-r from-violet-500 to-fuchsia-500 shadow-lg shadow-violet-500/30 disabled:opacity-60"
           >
-            Create account
+            {busy ? 'Opening your galaxy…' : 'Start focusing'}
           </motion.button>
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setScreen('login')}
-            className="w-full py-4 rounded-2xl font-semibold text-lg bg-white/10 border border-white/15"
-          >
-            Log in
-          </motion.button>
+          <p className="text-xs text-white/50">No email. No phone. No password.</p>
+
+          {err && <p className="text-xs text-red-300">{err}</p>}
+
+          <p className="text-xs text-white/50 pt-4">Want your galaxy on more than one device?</p>
+          <div className="flex gap-3">
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setScreen('signup')}
+              className="flex-1 py-3 rounded-2xl text-sm bg-white/10 border border-white/15"
+            >
+              Create account
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setScreen('login')}
+              className="flex-1 py-3 rounded-2xl text-sm bg-white/10 border border-white/15"
+            >
+              Log in
+            </motion.button>
+          </div>
         </motion.div>
       </motion.div>
     </div>

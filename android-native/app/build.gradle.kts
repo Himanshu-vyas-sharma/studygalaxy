@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -17,23 +19,33 @@ android {
         versionName = "1.0.0"
     }
 
+    /**
+     * Signing credentials live in android-native/keystore.properties, which is
+     * git-ignored — never commit the keystore or its password. Copy
+     * keystore.properties.example and fill it in on a new machine.
+     */
     signingConfigs {
         create("release") {
-            storeFile = file("../keystore/studygalaxy-release.jks")
-            storePassword = "StudyGalaxy2026!"
-            keyAlias = "studygalaxy"
-            keyPassword = "StudyGalaxy2026!"
+            val props = Properties()
+            val f = rootProject.file("keystore.properties")
+            if (f.exists()) {
+                f.inputStream().use { props.load(it) }
+                storeFile = rootProject.file(props.getProperty("storeFile"))
+                storePassword = props.getProperty("storePassword")
+                keyAlias = props.getProperty("keyAlias")
+                keyPassword = props.getProperty("keyPassword")
+            }
         }
     }
 
     buildTypes {
         debug {
-            // Point at your PC's LAN IP so a real phone on the same WiFi can reach it.
-            buildConfigField("String", "API_BASE", "\"http://192.168.0.106:3000\"")
+            // Live backend, so the app works on mobile data and any network.
+            buildConfigField("String", "API_BASE", "\"https://studygalaxy.onrender.com\"")
         }
         release {
             isMinifyEnabled = false
-            buildConfigField("String", "API_BASE", "\"https://studygalaxy-backend.onrender.com\"")
+            buildConfigField("String", "API_BASE", "\"https://studygalaxy.onrender.com\"")
             signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
@@ -63,6 +75,7 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.work.runtime.ktx)
     debugImplementation(libs.androidx.ui.tooling)
 
     implementation(libs.retrofit)

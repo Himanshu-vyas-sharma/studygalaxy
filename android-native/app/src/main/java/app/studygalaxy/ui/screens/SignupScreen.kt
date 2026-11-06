@@ -64,7 +64,9 @@ fun SignupScreen(
             OutlinedTextField(
                 value = phone,
                 onValueChange = { phone = it.filter { c -> c.isDigit() || c == '+' || c == ' ' || c == '-' }.take(20) },
-                placeholder = { Text("+91 98765 43210", color = White30) },
+                placeholder = { Text("98765 43210", color = White30) },
+                leadingIcon = { Text("+91", color = White70, fontSize = 14.sp, modifier = Modifier.padding(start = 12.dp)) },
+                supportingText = { Text("10 digits. For another country, type +<code> yourself.", color = White50, fontSize = 11.sp) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                 colors = fieldColors(),
                 modifier = Modifier.fillMaxWidth()
@@ -77,7 +79,7 @@ fun SignupScreen(
                 onValueChange = { pass = it.take(72) },
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                placeholder = { Text("At least 6 characters", color = White30) },
+                placeholder = { Text("At least 8 characters", color = White30) },
                 colors = fieldColors(),
                 modifier = Modifier.fillMaxWidth()
             )
@@ -110,7 +112,7 @@ fun SignupScreen(
                 err = null
                 val clean = phone.replace("\\s|-".toRegex(), "")
                 if (!clean.matches(Regex("^\\+?[0-9]{10,15}$"))) { err = "Enter a valid phone number"; return@Button }
-                if (pass.length < 6) { err = "Password must be at least 6 characters"; return@Button }
+                if (pass.length < 8) { err = "Password must be at least 8 characters"; return@Button }
                 if (pass != confirm) { err = "Passwords do not match"; return@Button }
                 loading = true
                 scope.launch {
@@ -134,14 +136,15 @@ fun SignupScreen(
             ) { Text(if (loading) "Charting your galaxy…" else "Create account", color = White90) }
         }
 
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-            Text("Already have an account? ", color = White50, fontSize = 12.sp)
-            Text(
-                "Log in",
-                color = Violet300, fontSize = 12.sp,
-                modifier = Modifier.padding(start = 4.dp)
-            )
-            TextButton(onClick = onLoginInstead, modifier = Modifier.height(20.dp), contentPadding = PaddingValues(0.dp)) {}
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Already have an account?", color = White50, fontSize = 12.sp)
+            TextButton(onClick = onLoginInstead, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
+                Text("Log in", color = Violet300, fontSize = 12.sp)
+            }
         }
     }
 }

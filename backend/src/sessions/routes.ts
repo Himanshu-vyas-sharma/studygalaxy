@@ -41,6 +41,16 @@ sessionsRouter.post('/start', async (req, res) => {
     await db.batch(stmts);
   }
 
+  // Tell the user's circles immediately — this is what makes
+  // "your friends are studying right now" true.
+  await broadcastCircleEvent(userId, {
+    type: 'session_start',
+    plannedMin: parsed.data.plannedMin,
+    subjectId: parsed.data.subjectId ?? null,
+    intention: parsed.data.intention ?? null,
+    at: now,
+  });
+
   res.json({ sessionId: id, serverStartTs: now, todoIds });
 });
 

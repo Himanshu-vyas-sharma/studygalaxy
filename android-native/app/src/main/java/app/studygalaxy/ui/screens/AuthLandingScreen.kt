@@ -22,12 +22,17 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.studygalaxy.ui.theme.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun AuthLandingScreen(
     onCreateAccount: () -> Unit,
-    onLogin: () -> Unit
+    onLogin: () -> Unit,
+    onGuest: suspend () -> String?
 ) {
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    var err by remember { mutableStateOf<String?>(null) }
     val infinite = rememberInfiniteTransition(label = "orbFloat")
     val float by infinite.animateFloat(
         initialValue = 0f, targetValue = 1f,
@@ -73,8 +78,17 @@ fun AuthLandingScreen(
             )
             Spacer(Modifier.height(40.dp))
 
+            // Primary path is no-account entry: no phone, no email, no password.
             Button(
-                onClick = onCreateAccount,
+                onClick = {
+                    busy = true; err = null
+                    scope.launch {
+                        val e = onGuest()
+                        busy = false
+                        if (e != null) err = e
+                    }
+                },
+                enabled = !busy,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
@@ -83,16 +97,47 @@ fun AuthLandingScreen(
                 Box(
                     Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Violet500, Fuchsia500)), RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.Center
-                ) { Text("Create account", color = White90, fontSize = 16.sp) }
+                ) {
+                    Text(
+                        if (busy) "Opening your galaxy…" else "Start focusing",
+                        color = White90, fontSize = 16.sp
+                    )
+                }
             }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "No email. No phone. No password.",
+                color = White50, fontSize = 11.sp, textAlign = TextAlign.Center
+            )
+
+            err?.let {
+                Spacer(Modifier.height(10.dp))
+                Text(it, color = Color(0xFFFCA5A5), fontSize = 12.sp, textAlign = TextAlign.Center)
+            }
+
+            Spacer(Modifier.height(22.dp))
+            Text(
+                "Want your galaxy on more than one phone?",
+                color = White50, fontSize = 11.sp, textAlign = TextAlign.Center
+            )
             Spacer(Modifier.height(10.dp))
-            Button(
-                onClick = onLogin,
-                modifier = Modifier.fillMaxWidth().height(56.dp)
-                    .border(1.dp, White10, RoundedCornerShape(16.dp)),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = White5)
-            ) { Text("Log in", color = White90, fontSize = 16.sp) }
+            Row(Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = onCreateAccount,
+                    modifier = Modifier.weight(1f).height(50.dp)
+                        .border(1.dp, White10, RoundedCornerShape(16.dp)),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = White5)
+                ) { Text("Create account", color = White90, fontSize = 13.sp) }
+                Spacer(Modifier.width(10.dp))
+                Button(
+                    onClick = onLogin,
+                    modifier = Modifier.weight(1f).height(50.dp)
+                        .border(1.dp, White10, RoundedCornerShape(16.dp)),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = White5)
+                ) { Text("Log in", color = White90, fontSize = 13.sp) }
+            }
         }
     }
 }

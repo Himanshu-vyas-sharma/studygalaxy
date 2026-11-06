@@ -29,6 +29,8 @@ interface Api {
     @GET("/circles")                                  suspend fun circles(): List<Circle>
     @POST("/circles")           suspend fun createCircle(@Body req: CreateCircleReq): Circle
     @POST("/circles/join")      suspend fun joinCircle(@Body req: JoinCircleReq): Circle
+    @GET("/circles/{id}/presence") suspend fun circlePresence(@Path("id") id: String): PresenceReply
+    @GET("/circles/friends-focusing") suspend fun friendsFocusing(): FriendsFocusingReply
 
     @GET("/stats/weekly")                             suspend fun statsWeekly(): WeeklyStats
 

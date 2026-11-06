@@ -1,6 +1,10 @@
 package app.studygalaxy
 
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import androidx.core.content.ContextCompat
+import app.studygalaxy.notifications.Nudges
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -34,9 +38,35 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 class MainActivity : ComponentActivity() {
     private val vm: MainViewModel by viewModels()
 
+    /**
+     * Android 13+ will silently drop every notification until the user grants
+     * this. The permission was declared in the manifest but never requested,
+     * so no reminder could ever appear on a modern phone.
+     */
+    private val notifPermission = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { /* granted or not, the app works either way */ }
+
+    private fun ensureNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = ContextCompat.checkSelfPermission(
+            this, android.Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) notifPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Opening the app resets the 2.5-hour idle clock.
+        Nudges.markActive(this)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        handleInviteIntent(intent)
+        ensureNotificationPermission()
+        Nudges.scheduleAll(this)
         setContent {
             StudyGalaxyTheme {
                 Box(Modifier.fillMaxSize()) {
@@ -56,7 +86,12 @@ class MainActivity : ComponentActivity() {
                             Screen.Onboarding -> OnboardingScreen(onDone = { vm.saveOnboarding(it) })
                             Screen.AuthLanding -> AuthLandingScreen(
                                 onCreateAccount = { vm.go(Screen.Signup) },
-                                onLogin = { vm.go(Screen.Login) }
+                                onLogin = { vm.go(Screen.Login) },
+                                onGuest = {
+                                    suspendCancellableCoroutine<String?> { cont ->
+                                        vm.continueAsGuest { err -> cont.resume(err) }
+                                    }
+                                }
                             )
                             Screen.Signup -> SignupScreen(
                                 onSignup = { phone, pw ->
@@ -156,6 +191,7 @@ class MainActivity : ComponentActivity() {
                                 load = { vm.loadCircles() },
                                 create = { vm.createCircle(it) },
                                 join = { vm.joinCircle(it) },
+                                openSocket = { id, cb -> vm.openCircleSocket(id, cb) },
                                 onBack = { vm.go(Screen.Home) }
                             )
                             Screen.Stats -> StatsScreen(
@@ -168,6 +204,21 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleInviteIntent(intent)
+    }
+
+    /** Pulls the invite code out of /join/<CODE> or studygalaxy://join/<CODE>. */
+    private fun handleInviteIntent(intent: android.content.Intent?) {
+        val data = intent?.data ?: return
+        val code = data.pathSegments?.lastOrNull()?.takeIf { it.isNotBlank() } ?: return
+        if (data.path?.contains("join") == true || data.host == "join") {
+            vm.handleInviteCode(code)
         }
     }
 }

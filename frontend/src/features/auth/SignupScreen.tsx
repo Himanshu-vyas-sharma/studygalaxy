@@ -19,7 +19,7 @@ export function SignupScreen() {
   const submit = async () => {
     setErr(null);
     if (phone.length !== 10) return setErr('Enter exactly 10 digits');
-    if (password.length < 6) return setErr('Password must be at least 6 characters');
+    if (password.length < 8) return setErr('Password must be at least 8 characters');
     if (password !== confirm) return setErr('Passwords do not match');
 
     setLoading(true);
@@ -82,7 +82,7 @@ export function SignupScreen() {
           <input
             type="password"
             autoComplete="new-password"
-            placeholder="At least 6 characters"
+            placeholder="At least 8 characters"
             value={password}
             onChange={e => setPassword(e.target.value.slice(0, 72))}
             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3.5 text-lg font-bold focus:outline-none focus:border-violet-400 placeholder:font-normal placeholder:text-base placeholder:text-white/30"

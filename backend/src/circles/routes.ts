@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { requireAuth, type AuthedRequest } from '../auth/middleware.js';
 import { uuid, inviteCode } from '../lib/uuid.js';
+import { focusingIn } from '../ws/server.js';
 
 export const circlesRouter = Router();
 circlesRouter.use(requireAuth);
@@ -55,12 +56,80 @@ circlesRouter.post('/join', async (req, res) => {
 circlesRouter.get('/', async (req, res) => {
   const { userId } = req as AuthedRequest;
   const rows = await db.all<any>(
-    `SELECT c.id, c.name, c.invite_code FROM circles c
+    `SELECT c.id, c.name, c.invite_code,
+            (SELECT COUNT(*) FROM circle_members cm WHERE cm.circle_id = c.id) AS member_count
+     FROM circles c
      JOIN circle_members m ON m.circle_id = c.id
      WHERE m.user_id = ? ORDER BY m.joined_at DESC`,
     [userId]
   );
-  res.json(rows.map(r => ({ id: r.id, name: r.name, inviteCode: r.invite_code })));
+  // Each row carries its live focusing count so the list shows activity
+  // before the socket for any one circle is opened.
+  const out = await Promise.all(
+    rows.map(async r => ({
+      id: r.id,
+      name: r.name,
+      inviteCode: r.invite_code,
+      memberCount: Number(r.member_count),
+      focusing: (await focusingIn(r.id)).map(f => f.cosmicName),
+    }))
+  );
+  res.json(out);
+});
+
+/**
+ * Everyone across all of this user's circles who is focusing right now, minus
+ * the user themselves. Cheap enough for a background poll to hit every
+ * 15 minutes — it powers the "your friend is studying" nudge.
+ */
+circlesRouter.get('/friends-focusing', async (req, res) => {
+  const { userId } = authed(req);
+  const now = Date.now();
+  const rows = await db.all<any>(
+    `SELECT DISTINCT u.id, u.cosmic_name, c.name AS circle_name,
+            s.started_at, s.planned_min, s.intention
+     FROM circle_members me
+     JOIN circles c           ON c.id = me.circle_id
+     JOIN circle_members them ON them.circle_id = me.circle_id AND them.user_id != me.user_id
+     JOIN users u             ON u.id = them.user_id
+     JOIN sessions s          ON s.user_id = u.id
+     WHERE me.user_id = ?
+       AND s.completed = 0
+       AND s.broken_at IS NULL
+       AND s.started_at + s.planned_min * 60000 > ?
+     ORDER BY s.started_at ASC
+     LIMIT 20`,
+    [userId, now]
+  );
+
+  // Is the asker already studying? If so the client stays quiet.
+  const own = await db.get<any>(
+    `SELECT 1 FROM sessions
+     WHERE user_id = ? AND completed = 0 AND broken_at IS NULL
+       AND started_at + planned_min * 60000 > ?`,
+    [userId, now]
+  );
+
+  res.json({
+    youAreFocusing: !!own,
+    friends: rows.map(r => ({
+      userId: r.id,
+      cosmicName: r.cosmic_name,
+      circleName: r.circle_name,
+      endsAt: Number(r.started_at) + Number(r.planned_min) * 60000,
+      intention: r.intention ?? null,
+    })),
+  });
+});
+
+/** Live snapshot for one circle — the REST twin of the socket's presence frame. */
+circlesRouter.get('/:id/presence', async (req, res) => {
+  const { userId } = authed(req);
+  const member = await db.get('SELECT 1 FROM circle_members WHERE circle_id = ? AND user_id = ?', [
+    req.params.id, userId,
+  ]);
+  if (!member) return res.status(403).json({ error: 'not_member' });
+  res.json({ focusing: await focusingIn(req.params.id) });
 });
 
 circlesRouter.get('/:id/events', async (req, res) => {

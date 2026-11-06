@@ -1,6 +1,6 @@
 import { db } from '../db/client.js';
 import { uuid } from '../lib/uuid.js';
-import { circleBroadcasters } from './server.js';
+import { circleBroadcasters, broadcastPresence } from './server.js';
 
 export async function broadcastCircleEvent(userId: string, payload: Record<string, unknown>) {
   const circles = await db.all<any>('SELECT circle_id FROM circle_members WHERE user_id = ?', [userId]);
@@ -21,5 +21,8 @@ export async function broadcastCircleEvent(userId: string, payload: Record<strin
 
   for (const row of circles) {
     circleBroadcasters.get(row.circle_id)?.({ ...payload, userId, cosmicName, at });
+    // Starting, finishing or breaking a session all change who is focusing,
+    // so follow every event with a fresh presence snapshot.
+    await broadcastPresence(row.circle_id);
   }
 }
