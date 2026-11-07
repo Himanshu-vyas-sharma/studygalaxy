@@ -84,6 +84,8 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
     val scope = rememberCoroutineScope()
     var step by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) { sound.startPad(scope) }
+    // Pull the music down whenever Galaxy is speaking.
+    LaunchedEffect(narrator.speaking) { sound.duck(narrator.speaking) }
     var a by remember { mutableStateOf(OnboardingAnswers()) }
 
     val tap: () -> Unit = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }

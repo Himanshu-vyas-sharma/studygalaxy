@@ -152,6 +152,15 @@ class Sound {
         }
     }
 
+    /**
+     * Drops the pad under speech and lifts it afterwards. Without this the
+     * drone and the voice compete at the same level and both sound muddy;
+     * ducking is what makes the line feel scored rather than talked over.
+     */
+    fun duck(active: Boolean) {
+        runCatching { pad?.setVolume(if (active) 0.14f else 0.5f) }
+    }
+
     fun release() = stopPad()
 }
 
