@@ -38,7 +38,8 @@ fun HomeScreen(
     onOpenGalaxy: () -> Unit,
     onOpenCircles: () -> Unit,
     onOpenStats: () -> Unit,
-    onOpenNotes: () -> Unit
+    onOpenNotes: () -> Unit,
+    onOpenAccount: () -> Unit = {}
 ) {
     val haptic = LocalHapticFeedback.current
     val activeSubject = subjects.firstOrNull { it.id == activeSubjectId }
@@ -52,7 +53,11 @@ fun HomeScreen(
     Column(Modifier.fillMaxSize().padding(bottom = 8.dp)) {
 
         // Top strip
-        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp)
+                .clickable(onClick = onOpenAccount),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Avatar(seed = user.avatarSeed, name = user.cosmicName, size = 44.dp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {

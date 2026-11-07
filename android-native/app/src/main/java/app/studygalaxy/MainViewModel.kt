@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
-enum class Screen { Splash, Loading, Onboarding, Signup, Login, NamePicker, Home, SubjectPicker, SessionSetup, Timer, Galaxy, Circles, Notes, NoteCanvas, Stats, Privacy }
+enum class Screen { Splash, Loading, Onboarding, Signup, Login, NamePicker, Account, Home, SubjectPicker, SessionSetup, Timer, Galaxy, Circles, Notes, NoteCanvas, Stats, Privacy }
 
 data class AppState(
     val screen: Screen = Screen.Splash,
@@ -120,6 +120,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun nameClaimed(): Boolean =
         TokenStore.nameClaimedFlow(ctx).firstOrNull() ?: false
+
+    /**
+     * Clears the session and returns to signup. The account itself is
+     * untouched on the server, so logging back in restores everything; only
+     * this device forgets. Onboarding answers go too, since the next person
+     * to sign in here should answer for themselves.
+     */
+    fun logout() = viewModelScope.launch {
+        TokenStore.clear(ctx)
+        galaxyCache = null; circlesCache = null; statsCache = null
+        _state.value = AppState(screen = Screen.Signup)
+    }
 
     fun go(screen: Screen) { _state.value = _state.value.copy(screen = screen) }
 

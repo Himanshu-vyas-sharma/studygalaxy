@@ -132,7 +132,8 @@ class MainActivity : ComponentActivity() {
                                     onOpenGalaxy = { vm.go(Screen.Galaxy) },
                                     onOpenCircles = { vm.go(Screen.Circles) },
                                     onOpenStats = { vm.go(Screen.Stats) },
-                                    onOpenNotes = { vm.go(Screen.Notes) }
+                                    onOpenNotes = { vm.go(Screen.Notes) },
+                                    onOpenAccount = { vm.go(Screen.Account) }
                                 )
                             }
                             Screen.SubjectPicker -> SubjectPickerScreen(
@@ -193,7 +194,16 @@ class MainActivity : ComponentActivity() {
                                 load = { vm.loadStats() },
                                 onBack = { vm.go(Screen.Home) }
                             )
-                            Screen.Privacy -> PrivacyScreen(onBack = { vm.go(Screen.Home) })
+                            Screen.Account -> {
+                                val u = state.user
+                                if (u == null) LoadingView() else AccountScreen(
+                                    user = u,
+                                    onOpenPrivacy = { vm.go(Screen.Privacy) },
+                                    onLogout = { vm.logout() },
+                                    onBack = { vm.go(Screen.Home) }
+                                )
+                            }
+                            Screen.Privacy -> PrivacyScreen(onBack = { vm.go(Screen.Account) })
                             else -> LoadingView()
                         }
                     }
