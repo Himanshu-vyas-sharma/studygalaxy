@@ -25,7 +25,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import app.studygalaxy.ui.components.rememberNarrator
 import app.studygalaxy.ui.components.rememberSound
 import kotlinx.coroutines.CoroutineScope
 import app.studygalaxy.ui.theme.*
@@ -79,13 +78,10 @@ private const val TOTAL_QUESTIONS = 10
 @Composable
 fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
     val haptic = LocalHapticFeedback.current
-    val narrator = rememberNarrator()
     val sound = rememberSound()
     val scope = rememberCoroutineScope()
     var step by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) { sound.startPad(scope) }
-    // Pull the music down whenever Galaxy is speaking.
-    LaunchedEffect(narrator.speaking) { sound.duck(narrator.speaking) }
     var a by remember { mutableStateOf(OnboardingAnswers()) }
 
     val tap: () -> Unit = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
@@ -111,7 +107,7 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (step in 1..TOTAL_QUESTIONS) {
-                TextButton(onClick = { tap(); narrator.stop(); step-- }, contentPadding = PaddingValues(0.dp)) {
+                TextButton(onClick = { tap(); step-- }, contentPadding = PaddingValues(0.dp)) {
                     Text("← Back", color = White70, fontSize = 13.sp)
                 }
             }
@@ -119,13 +115,12 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
             // Muting matters: plenty of students open an app in a classroom.
             TextButton(
                 onClick = {
-                    narrator.muted = !narrator.muted
-                    sound.muted = narrator.muted
-                    if (narrator.muted) narrator.stop() else sound.startPad(scope)
+                    sound.muted = !sound.muted
+                    if (!sound.muted) sound.startPad(scope)
                 },
                 contentPadding = PaddingValues(horizontal = 8.dp)
             ) {
-                Text(if (narrator.muted) "🔇 Sound off" else "🔊 Sound on", color = White50, fontSize = 11.sp)
+                Text(if (sound.muted) "🔇 Music off" else "🔊 Music on", color = White50, fontSize = 11.sp)
             }
             if (step in 1..TOTAL_QUESTIONS) {
                 Text("$step / $TOTAL_QUESTIONS", color = White50, fontSize = 10.sp, letterSpacing = 2.sp)
@@ -143,14 +138,11 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
         ) { s ->
             when (s) {
                 0 -> IntroStep(
-                    speaking = narrator.speaking,
-                    onSpeak = { narrator.speak(it) },
+                    onBeat = { sound.chime(scope, it) },
                     onBegin = { advance() }
                 )
 
                 1 -> QuestionStep(
-                    narrator = { narrator.speak(it) },
-                    spoken = "First — is something riding on this? Are you preparing for an exam?",
                     title = "Is something riding on this?",
                     subtitle = "Be honest. It changes how hard I push.",
                     options = listOf(
@@ -168,8 +160,6 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
                 )
 
                 2 -> QuestionStep(
-                    narrator = { narrator.speak(it) },
-                    spoken = "Which one are you preparing for?",
                     title = "Which exam?",
                     subtitle = "Your galaxy gets shaped around it.",
                     options = listOf(
@@ -185,8 +175,6 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
                 )
 
                 3 -> QuestionStep(
-                    narrator = { narrator.speak(it) },
-                    spoken = "How close is it?",
                     title = "How close is it?",
                     subtitle = "This decides how hard I push you.",
                     options = listOf(
@@ -199,8 +187,6 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
                 )
 
                 4 -> QuestionStep(
-                    narrator = { narrator.speak(it) },
-                    spoken = "How often do you actually sit down and study? Not how often you plan to.",
                     title = "How often do you actually study?",
                     subtitle = "Not how often you plan to. How often you do.",
                     options = listOf(
@@ -216,8 +202,6 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
                 )
 
                 5 -> QuestionStep(
-                    narrator = { narrator.speak(it) },
-                    spoken = "How long can you last before your hand reaches for your phone?",
                     title = "How long before you reach for your phone?",
                     subtitle = "Answer small. Your first session gets built from this, and I want you to win it.",
                     options = listOf(
@@ -230,8 +214,6 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
                 )
 
                 6 -> QuestionStep(
-                    narrator = { narrator.speak(it) },
-                    spoken = "What pulls you away the most?",
                     title = "What pulls you away?",
                     subtitle = "The one that wins most often.",
                     options = listOf(
@@ -246,8 +228,6 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
                 )
 
                 7 -> QuestionStep(
-                    narrator = { narrator.speak(it) },
-                    spoken = "And what does your phone actually cost you?",
                     title = "What does your phone cost you?",
                     subtitle = "Pick the one that stings.",
                     options = listOf(
@@ -260,8 +240,6 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
                 )
 
                 8 -> QuestionStep(
-                    narrator = { narrator.speak(it) },
-                    spoken = "Check your screen time, then tell me the truth.",
                     title = "Your daily screen time?",
                     subtitle = "Settings → Digital Wellbeing. I'll wait. Guessing low only cheats you.",
                     options = listOf(
@@ -275,8 +253,6 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
                 )
 
                 9 -> QuestionStep(
-                    narrator = { narrator.speak(it) },
-                    spoken = "Who else is doing this with you?",
                     title = "Who else is doing this with you?",
                     subtitle = "Studying where someone can see you changes everything.",
                     options = listOf(
@@ -289,8 +265,6 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
                 )
 
                 10 -> QuestionStep(
-                    narrator = { narrator.speak(it) },
-                    spoken = "Last one. When does your head work best?",
                     title = "When does your head work best?",
                     subtitle = "I'll nudge you then, and leave you alone otherwise.",
                     options = listOf(
@@ -306,9 +280,8 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
                     screenHoursPerDay = a.screenHours ?: 4f,
                     examLabel = examPhrase(a.examGoal),
                     distractionLabel = distractionPhrase(a.biggestDistraction),
-                    onSpeak = { narrator.speak(it) },
                     onSwell = { sound.swell(scope) },
-                    onContinue = { tap(); narrator.stop(); sound.stopPad(); onDone(a) }
+                    onContinue = { tap(); sound.stopPad(); onDone(a) }
                 )
             }
         }
@@ -329,82 +302,80 @@ private fun distractionPhrase(id: String?): String? = when (id) {
 
 /* ------------------------------ Intro ------------------------------ */
 
+/**
+ * The opening, carried by typography and score rather than a voice.
+ *
+ * Each line lands word by word on a rising bell, so the rhythm of reading it
+ * is the rhythm of the music. A synthetic voice would undercut this; silence
+ * with good timing reads as confidence.
+ */
 @Composable
 private fun IntroStep(
-    speaking: Boolean,
-    onSpeak: (String) -> Unit,
+    onBeat: (Int) -> Unit,
     onBegin: () -> Unit
 ) {
-    // Written to sound like nothing else in the category: it opens by refusing
-    // the usual promise rather than making it.
-    val line1 = "Hi. I'm $GUIDE_NAME."
-    val line2 = "I'm not here to motivate you. Motivation runs out by Thursday."
-    val line3 = "I'm here to show you exactly where your time goes — and then help you take it back, one hour at a time."
-    val line4 = "Six questions. Answer them honestly and I'll show you something about your year."
+    val lines = listOf(
+        "Hi. I'm Galaxy." to true,
+        "I'm not here to motivate you." to false,
+        "Motivation runs out by Thursday." to false,
+        "I'm here to show you where your time actually goes — and help you take it back." to false,
+        "Ten questions. Answer them honestly." to false,
+    )
 
     var shown by remember { mutableIntStateOf(0) }
     var ready by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        delay(400)
-        onSpeak("$line1 $line2")
-        shown = 1; delay(1500)
-        shown = 2; delay(2900)
-        onSpeak(line3)
-        shown = 3; delay(3800)
-        onSpeak(line4)
-        shown = 4; delay(900)
+        delay(500)
+        lines.indices.forEach { i ->
+            onBeat(i * 2)
+            shown = i + 1
+            delay(if (i == 0) 1500L else 1750L)
+        }
         ready = true
     }
 
     val pulse = rememberInfiniteTransition(label = "orb")
     val breathe by pulse.animateFloat(
-        1f, 1.06f,
+        1f, 1.05f,
         infiniteRepeatable(tween(2600, easing = EaseInOutSine), RepeatMode.Reverse),
         label = "breathe"
     )
-    // The orb swells while the voice is talking, so it reads as the speaker.
-    val voiceScale by animateFloatAsState(
-        if (speaking) 1.12f else 1f,
-        spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-        label = "voice"
+    // The core flares on each new line, so the visual pulse matches the bell.
+    val flare by animateFloatAsState(
+        targetValue = 1f + (shown % 2) * 0.10f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "flare"
     )
 
     Column(
         Modifier.fillMaxSize().padding(horizontal = 28.dp).verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(Modifier.height(40.dp))
+        Spacer(Modifier.height(34.dp))
 
         Box(contentAlignment = Alignment.Center) {
             Box(
-                Modifier.size(150.dp).scale(breathe * voiceScale)
+                Modifier.size(128.dp).scale(breathe * flare)
                     .clip(CircleShape)
-                    .background(
-                        Brush.linearGradient(listOf(Violet500, Fuchsia500, Indigo700))
-                    )
+                    .background(Brush.linearGradient(listOf(Violet500, Fuchsia500, Indigo700)))
             )
-            // Ripple rings while speaking
-            if (speaking) {
-                Box(
-                    Modifier.size(190.dp).scale(voiceScale)
-                        .clip(CircleShape)
-                        .border(1.dp, Violet300.copy(alpha = 0.35f), CircleShape)
-                )
-            }
+            Box(
+                Modifier.size(168.dp).scale(flare)
+                    .clip(CircleShape)
+                    .border(1.dp, Violet300.copy(alpha = 0.30f), CircleShape)
+            )
         }
 
-        Spacer(Modifier.height(34.dp))
+        Spacer(Modifier.height(36.dp))
 
-        // Captions, so the script lands whether or not the voice is audible.
-        Caption(shown >= 1, line1, big = true)
-        Caption(shown >= 2, line2)
-        Caption(shown >= 3, line3)
-        Caption(shown >= 4, line4)
+        lines.forEachIndexed { i, (text, big) ->
+            WordReveal(visible = shown > i, text = text, big = big)
+        }
 
         Spacer(Modifier.height(30.dp))
 
-        AnimatedVisibility(ready, enter = fadeIn(tween(500))) {
+        AnimatedVisibility(ready, enter = fadeIn(tween(600))) {
             Button(
                 onClick = onBegin,
                 modifier = Modifier.fillMaxWidth().height(54.dp),
@@ -418,28 +389,75 @@ private fun IntroStep(
                         RoundedCornerShape(16.dp)
                     ),
                     contentAlignment = Alignment.Center
-                ) { Text("I'm listening", color = White90, fontSize = 16.sp) }
+                ) { Text("Start", color = White90, fontSize = 16.sp) }
             }
         }
         Spacer(Modifier.height(24.dp))
     }
 }
 
+/**
+ * Reveals a line one word at a time, each word rising and fading in. Reading
+ * it takes about as long as hearing it would, which is what keeps the pacing
+ * cinematic rather than making the user wait on a wall of text.
+ */
 @Composable
-private fun Caption(visible: Boolean, text: String, big: Boolean = false) {
-    AnimatedVisibility(
-        visible,
-        enter = fadeIn(tween(550)) + slideInVertically(tween(550)) { it / 5 }
-    ) {
-        Text(
-            text,
-            color = if (big) Color.White else White70,
-            fontSize = if (big) 28.sp else 15.sp,
-            fontWeight = if (big) FontWeight.Black else FontWeight.Normal,
-            textAlign = TextAlign.Center,
-            lineHeight = if (big) 34.sp else 22.sp,
-            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
-        )
+private fun WordReveal(visible: Boolean, text: String, big: Boolean) {
+    val words = remember(text) { text.split(" ") }
+    var revealed by remember(text) { mutableIntStateOf(0) }
+
+    LaunchedEffect(visible) {
+        if (!visible) { revealed = 0; return@LaunchedEffect }
+        words.indices.forEach { i ->
+            revealed = i + 1
+            delay(if (big) 120L else 58L)
+        }
+    }
+
+    if (!visible) return
+
+    FlowRowCentered(modifier = Modifier.fillMaxWidth().padding(bottom = if (big) 18.dp else 12.dp)) {
+        words.forEachIndexed { i, w ->
+            val on = i < revealed
+            val alpha by animateFloatAsState(if (on) 1f else 0f, tween(340), label = "wa")
+            val dy by animateFloatAsState(if (on) 0f else 14f, tween(340, easing = EaseOutCubic), label = "wy")
+            Text(
+                text = w,
+                color = if (big) Color.White else White70,
+                fontSize = if (big) 30.sp else 16.sp,
+                fontWeight = if (big) FontWeight.Black else FontWeight.Medium,
+                lineHeight = if (big) 38.sp else 24.sp,
+                modifier = Modifier
+                    .padding(end = 6.dp)
+                    .graphicsLayer { this.alpha = alpha; translationY = dy }
+            )
+        }
+    }
+}
+
+/** Minimal centred flow layout, so a revealed line wraps like a paragraph. */
+@Composable
+private fun FlowRowCentered(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    androidx.compose.ui.layout.Layout(content = content, modifier = modifier) { measurables, constraints ->
+        val max = constraints.maxWidth
+        val placeables = measurables.map { it.measure(constraints.copy(minWidth = 0)) }
+        val rows = mutableListOf<MutableList<androidx.compose.ui.layout.Placeable>>()
+        var row = mutableListOf<androidx.compose.ui.layout.Placeable>()
+        var w = 0
+        placeables.forEach { pl ->
+            if (w + pl.width > max && row.isNotEmpty()) { rows.add(row); row = mutableListOf(); w = 0 }
+            row.add(pl); w += pl.width
+        }
+        if (row.isNotEmpty()) rows.add(row)
+        val height = rows.sumOf { r -> r.maxOf { it.height } }
+        layout(max, height) {
+            var y = 0
+            rows.forEach { r ->
+                var x = (max - r.sumOf { it.width }) / 2
+                r.forEach { pl -> pl.placeRelative(x, y); x += pl.width }
+                y += r.maxOf { it.height }
+            }
+        }
     }
 }
 
@@ -447,32 +465,45 @@ private fun Caption(visible: Boolean, text: String, big: Boolean = false) {
 
 @Composable
 private fun QuestionStep(
-    narrator: (String) -> Unit,
-    spoken: String,
     title: String,
     subtitle: String,
     options: List<Opt>,
     onPick: (Opt) -> Unit
 ) {
-    LaunchedEffect(title) {
-        delay(280)
-        narrator(spoken)
-    }
-
     Column(
         Modifier.fillMaxSize().padding(horizontal = 24.dp).verticalScroll(rememberScrollState())
     ) {
         Spacer(Modifier.height(10.dp))
+
+        // The question arrives rather than appearing: it settles out of wide
+        // letter-spacing while the options fade up underneath.
+        var landed by remember(title) { mutableStateOf(false) }
+        LaunchedEffect(title) { landed = false; delay(40); landed = true }
+        val spacing by animateFloatAsState(
+            if (landed) 0f else 6f, tween(620, easing = EaseOutCubic), label = "qsp"
+        )
+        val titleAlpha by animateFloatAsState(
+            if (landed) 1f else 0f, tween(520), label = "qa"
+        )
+
         Text(
             title,
             style = MaterialTheme.typography.displaySmall.copy(brush = gradientText()),
-            lineHeight = 38.sp
+            lineHeight = 38.sp,
+            letterSpacing = spacing.sp,
+            modifier = Modifier.graphicsLayer { alpha = titleAlpha }
         )
         Spacer(Modifier.height(10.dp))
-        Text(subtitle, color = White70, fontSize = 13.sp, lineHeight = 19.sp)
+        AnimatedVisibility(landed, enter = fadeIn(tween(520)) + slideInVertically(tween(520)) { it / 3 }) {
+            Text(subtitle, color = White70, fontSize = 13.sp, lineHeight = 19.sp)
+        }
         Spacer(Modifier.height(22.dp))
 
-        options.forEach { o ->
+        options.forEachIndexed { idx, o ->
+            var appeared by remember(o.id) { mutableStateOf(false) }
+            LaunchedEffect(o.id) { delay(160L + idx * 70L); appeared = true }
+            val optAlpha by animateFloatAsState(if (appeared) 1f else 0f, tween(380), label = "oa")
+            val optDy by animateFloatAsState(if (appeared) 0f else 22f, tween(380, easing = EaseOutCubic), label = "od")
             var pressed by remember(o.id) { mutableStateOf(false) }
             val scale by animateFloatAsState(
                 if (pressed) 0.97f else 1f,
@@ -483,7 +514,10 @@ private fun QuestionStep(
                 Modifier
                     .fillMaxWidth()
                     .padding(vertical = 5.dp)
-                    .graphicsLayer { scaleX = scale; scaleY = scale }
+                    .graphicsLayer {
+                        scaleX = scale; scaleY = scale
+                        alpha = optAlpha; translationY = optDy
+                    }
                     .background(White5, RoundedCornerShape(16.dp))
                     .border(1.dp, White10, RoundedCornerShape(16.dp))
                     .clickable { pressed = true; onPick(o) }
