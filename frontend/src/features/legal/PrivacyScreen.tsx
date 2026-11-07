@@ -15,17 +15,18 @@ export function PrivacyScreen() {
 
         <h2 className="font-semibold text-white mt-4">What we store</h2>
         <ul className="list-disc pl-5 space-y-1">
-          <li>A random device identifier generated on your device. Nothing in it identifies you personally.</li>
+          <li>Your phone number — used only as your login ID. We never send SMS.</li>
+          <li>Your password, stored as a one-way scrypt hash. We cannot read it even if we wanted to.</li>
+          <li>A random device identifier generated on your device.</li>
           <li>Your cosmic name and the sessions, subjects, and circles you create.</li>
           <li>Session timestamps and durations (needed to grow your galaxy and streaks).</li>
         </ul>
 
         <h2 className="font-semibold text-white mt-4">What we don't collect</h2>
         <ul className="list-disc pl-5 space-y-1">
-          <li>No phone number. No email. No password. No real name.</li>
+          <li>No email, no address, no real name.</li>
           <li>No contacts, no location, no camera or microphone access.</li>
           <li>No ad trackers, no third-party analytics.</li>
-          <li>There is no sign-in, so there is no credential to steal or leak.</li>
         </ul>
 
         <h2 className="font-semibold text-white mt-4">Who sees your data</h2>

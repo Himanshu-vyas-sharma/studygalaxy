@@ -85,14 +85,27 @@ class MainActivity : ComponentActivity() {
                         label = "screen"
                     ) { screen ->
                         when (screen) {
+                            Screen.Splash -> SplashScreen(onFinished = { vm.splashDone() })
                             Screen.Loading -> LoadingView()
-                            Screen.Onboarding -> OnboardingScreen(onDone = { vm.saveOnboarding(it) })
-                            Screen.AuthLanding -> AuthLandingScreen(
-                                onGuest = {
+                            Screen.Onboarding -> OnboardingScreen(onDone = { vm.finishOnboarding(it) })
+                            Screen.Signup -> SignupScreen(
+                                onSignup = { phone, pw ->
                                     suspendCancellableCoroutine<String?> { cont ->
-                                        vm.continueAsGuest { err -> cont.resume(err) }
+                                        vm.signup(phone, pw) { err -> cont.resume(err) }
                                     }
-                                }
+                                },
+                                onDone = { },
+                                onBack = { },
+                                onLoginInstead = { vm.go(Screen.Login) }
+                            )
+                            Screen.Login -> LoginScreen(
+                                onLogin = { phone, pw ->
+                                    suspendCancellableCoroutine<String?> { cont ->
+                                        vm.login(phone, pw) { err -> cont.resume(err) }
+                                    }
+                                },
+                                onDone = { },
+                                onBack = { vm.go(Screen.Signup) }
                             )
                             Screen.NamePicker -> {
                                 val u = state.user

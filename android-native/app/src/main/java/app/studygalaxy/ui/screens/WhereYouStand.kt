@@ -52,6 +52,7 @@ fun WhereYouStandScreen(
     examLabel: String?,
     distractionLabel: String?,
     onSpeak: (String) -> Unit,
+    onSwell: () -> Unit = {},
     onContinue: () -> Unit
 ) {
     val hoursPerYear = (screenHoursPerDay * 365f).roundToInt()
@@ -64,6 +65,7 @@ fun WhereYouStandScreen(
 
     val counter = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
+        onSwell()
         onSpeak("Before we begin, look at this.")
         delay(900)
         phase = 1

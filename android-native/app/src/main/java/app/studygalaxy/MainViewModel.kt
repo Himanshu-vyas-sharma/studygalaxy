@@ -12,10 +12,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
-enum class Screen { Loading, Onboarding, AuthLanding, NamePicker, Home, SubjectPicker, SessionSetup, Timer, Galaxy, Circles, Notes, NoteCanvas, Stats, Privacy }
+enum class Screen { Splash, Loading, Onboarding, Signup, Login, NamePicker, Home, SubjectPicker, SessionSetup, Timer, Galaxy, Circles, Notes, NoteCanvas, Stats, Privacy }
 
 data class AppState(
-    val screen: Screen = Screen.Loading,
+    val screen: Screen = Screen.Splash,
     val user: User? = null,
     val subjects: List<Planet> = emptyList(),
     val activeSubjectId: String? = null,
@@ -42,10 +42,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (jwt != null) {
             try {
                 val me = api.me()
-                _state.value = _state.value.copy(
-                    user = me,
-                    screen = if (nameClaimed()) Screen.Home else Screen.NamePicker
-                )
+                _state.value = _state.value.copy(user = me)
+                routeTo(if (nameClaimed()) Screen.Home else Screen.NamePicker)
                 reloadSubjects()
                 scheduleReminderFromProfile()
                 prefetchScreens()
@@ -55,8 +53,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 TokenStore.setJwt(ctx, null)
             }
         }
-        val onboarded = TokenStore.isOnboarded(ctx)
-        _state.value = _state.value.copy(screen = if (onboarded) Screen.AuthLanding else Screen.Onboarding)
+        // Signed out: the account comes first, then the questions.
+        routeTo(Screen.Signup)
+    }
+
+    /**
+     * Bootstrap and the splash animation race each other. Whichever finishes
+     * first waits: the destination is parked until the animation is done, so
+     * the logo is never cut short and a slow network never shows a blank screen.
+     */
+    private var resolvedStart: Screen? = null
+    private var splashFinished = false
+
+    private fun routeTo(screen: Screen) {
+        resolvedStart = screen
+        if (splashFinished) _state.value = _state.value.copy(screen = screen)
+    }
+
+    fun splashDone() {
+        splashFinished = true
+        resolvedStart?.let { _state.value = _state.value.copy(screen = it) }
     }
 
     private fun reloadSubjects() = viewModelScope.launch {
@@ -88,11 +104,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshSubjects() = reloadSubjects()
 
-    fun saveOnboarding(answers: app.studygalaxy.ui.screens.OnboardingAnswers) = viewModelScope.launch {
-        TokenStore.saveOnboarding(ctx, answers.toJson())
-        _state.value = _state.value.copy(screen = Screen.AuthLanding)
-    }
-
     /** Called after signup/login so profile can be stored on the user record */
     private fun syncPendingProfile() = viewModelScope.launch {
         val json = TokenStore.getOnboardingJson(ctx) ?: return@launch
@@ -116,6 +127,54 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * The only way in. No phone, no email, no password: the device id becomes
      * the account, and the JWT carries it from there.
      */
+    /** Where a freshly authenticated user lands: questions first run, Home after. */
+    private suspend fun postAuthScreen(): Screen =
+        if (TokenStore.isOnboarded(ctx)) Screen.Home else Screen.Onboarding
+
+    fun signup(phone: String, password: String, onResult: (String?) -> Unit) = viewModelScope.launch {
+        val device = TokenStore.getOrCreateDeviceId(ctx)
+        try {
+            val reply = api.signup(SignupReq(normalizePhone(phone), password, device))
+            TokenStore.setJwt(ctx, reply.jwt)
+            _state.value = _state.value.copy(user = reply.user, screen = postAuthScreen())
+            reloadSubjects()
+            prefetchScreens()
+            consumePendingInvite()
+            onResult(null)
+        } catch (e: Throwable) {
+            onResult(mapAuthError(e, signingUp = true))
+        }
+    }
+
+    fun login(phone: String, password: String, onResult: (String?) -> Unit) = viewModelScope.launch {
+        val device = TokenStore.getOrCreateDeviceId(ctx)
+        try {
+            val reply = api.login(LoginReq(normalizePhone(phone), password, device))
+            TokenStore.setJwt(ctx, reply.jwt)
+            TokenStore.markNameClaimed(ctx)
+            _state.value = _state.value.copy(user = reply.user, screen = postAuthScreen())
+            syncPendingProfile()
+            reloadSubjects()
+            scheduleReminderFromProfile()
+            prefetchScreens()
+            consumePendingInvite()
+            onResult(null)
+        } catch (e: Throwable) {
+            onResult(mapAuthError(e, signingUp = false))
+        }
+    }
+
+    /**
+     * Onboarding now runs after sign-in, so the answers go straight to the
+     * server instead of waiting in DataStore for an account to exist.
+     */
+    fun finishOnboarding(answers: app.studygalaxy.ui.screens.OnboardingAnswers) = viewModelScope.launch {
+        TokenStore.saveOnboarding(ctx, answers.toJson())
+        _state.value = _state.value.copy(screen = Screen.NamePicker)
+        syncPendingProfile()
+        scheduleReminderFromProfile()
+    }
+
     fun continueAsGuest(onResult: (String?) -> Unit) = viewModelScope.launch {
         val device = TokenStore.getOrCreateDeviceId(ctx)
         try {
@@ -309,14 +368,43 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         statsCache = null
     }
 
-    /** Only one request can fail here now, so the messages stay short. */
-    private fun startupError(t: Throwable): String = when {
-        t is java.io.IOException ->
-            "Can't reach StudyGalaxy. Check your internet and try again."
-        (t as? retrofit2.HttpException)?.code() == 429 ->
-            "Too many tries from this device. Wait a few minutes."
-        ((t as? retrofit2.HttpException)?.code() ?: 0) >= 500 ->
-            "StudyGalaxy's server hiccuped. Try again in a moment."
-        else -> "Couldn't start. Try again."
+    /**
+     * The API stores phones as E.164. A bare 10-digit number is assumed Indian;
+     * anything the user typed with its own "+<code>" passes through untouched.
+     */
+    private fun normalizePhone(raw: String): String {
+        val s = raw.filter { it.isDigit() || it == '+' }
+        return if (s.startsWith("+")) s else "+$DEFAULT_DIAL$s"
     }
+
+    /**
+     * Retrofit's HttpException message is only "HTTP 400 Bad Request" — the
+     * server's error code is in the response body, so read that instead.
+     */
+    private fun mapAuthError(t: Throwable, signingUp: Boolean): String {
+        val http = t as? retrofit2.HttpException
+        val code = http?.code()
+        val body = runCatching { http?.response()?.errorBody()?.string() }.getOrNull().orEmpty()
+        return when {
+            t is java.io.IOException ->
+                "Can't reach StudyGalaxy. Check your internet and try again."
+            code == 409 || body.contains("phone_taken", true) ->
+                "This number already has an account. Log in instead."
+            body.contains("no_such_account", true) ->
+                "No account for this number yet. Create one first."
+            body.contains("bad_phone", true) ->
+                "Enter a valid 10-digit phone number."
+            body.contains("bad_body", true) ->
+                if (signingUp) "Check your number, and use a password of at least 8 characters."
+                else "Check your number and password."
+            code == 401 -> "Wrong phone number or password."
+            code == 429 -> "Too many attempts. Wait a few minutes and try again."
+            code != null && code >= 500 -> "StudyGalaxy's server hiccuped. Try again in a moment."
+            else -> if (signingUp) "Sign up failed. Try again." else "Login failed. Try again."
+        }
+    }
+
+    private fun startupError(t: Throwable): String = mapAuthError(t, signingUp = true)
+
+    private companion object { const val DEFAULT_DIAL = "91" }
 }

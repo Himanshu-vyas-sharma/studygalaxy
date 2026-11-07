@@ -59,6 +59,21 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ deviceId }),
     }),
+  signup: (dialCode: string, phoneNumber: string, password: string, deviceId: string, cosmicName?: string) =>
+    request<{ jwt: string; user: User }>('/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify({ dialCode, phoneNumber, password, deviceId, cosmicName }),
+    }),
+  login: (dialCode: string, phoneNumber: string, password: string, deviceId: string) =>
+    request<{ jwt: string; user: User }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ dialCode, phoneNumber, password, deviceId }),
+    }),
+  attachPhone: (phoneNumber: string, password: string) =>
+    request<{ ok: true }>('/auth/attach-phone', {
+      method: 'POST',
+      body: JSON.stringify({ phoneNumber, password }),
+    }),
   claimName: (name: string) =>
     request<{ ok: true; cosmicName: string }>('/auth/claim-name', {
       method: 'POST',

@@ -4,23 +4,30 @@ import { db } from '../db/client.js';
 import { signJwt } from './jwt.js';
 import { requireAuth, type AuthedRequest } from './middleware.js';
 import { uuid, randomCosmicName } from '../lib/uuid.js';
+import { hashPassword, verifyPassword } from '../lib/password.js';
+import { COUNTRIES, toE164, normalizeE164 } from '../lib/countries.js';
 import { rateLimit } from '../lib/rateLimit.js';
 
 /**
- * StudyGalaxy has no passwords, no email and no phone numbers.
+ * Accounts are a phone number plus a password, stored E.164: dial code plus
+ * exactly 10 national digits, any leading digit including 0.
  *
- * An account is created from a device id the client generates on first run,
- * and is identified from then on by a JWT. Nothing personal is collected, so
- * there is nothing to sign in to and nothing to leak.
- *
- * The trade-off, which the UI states plainly: an account lives on the device
- * that made it. Android's Auto Backup carries the device id to a reinstall or
- * a new phone when the user has backup enabled, but that is best-effort.
+ * /anonymous is kept so the rows created while the app ran credential-free
+ * still resolve, but no client offers it any more: every new account comes
+ * through /signup and therefore always has credentials to log in with.
  */
 export const authRouter = Router();
 
-// A device should not be able to mint endless accounts.
+function resolvePhone(input: { dialCode?: string; phoneNumber: string }): string | null {
+  if (input.dialCode) return toE164(input.dialCode, input.phoneNumber);
+  return normalizeE164(input.phoneNumber);
+}
+
+const authLimiter = rateLimit({ windowMs: 15 * 60_000, max: 30 });
+const signupLimiter = rateLimit({ windowMs: 60 * 60_000, max: 10 });
 const anonLimiter = rateLimit({ windowMs: 60 * 60_000, max: 20 });
+
+authRouter.get('/countries', (_req, res) => res.json(COUNTRIES));
 
 async function seedFirstLight(userId: string) {
   await db.run(
@@ -37,10 +44,11 @@ function userToWire(u: any) {
     level: Number(u.level),
     totalFocusMin: Number(u.total_focus_min),
     streakDays: Number(u.streak_days),
+    phoneNumber: u.phone_number ?? null,
   };
 }
 
-// ---- The only way in ----
+// ---- Legacy anonymous accounts (no client path; kept so old rows still work) ----
 const anonBody = z.object({ deviceId: z.string().min(8).max(128) });
 
 authRouter.post('/anonymous', anonLimiter, async (req, res) => {
@@ -63,7 +71,93 @@ authRouter.post('/anonymous', anonLimiter, async (req, res) => {
   res.json({ jwt: signJwt({ uid: id, did: deviceId }), user: userToWire(u) });
 });
 
-// ---- Display name (not a credential) ----
+// ---- Signup ----
+const signupBody = z.object({
+  dialCode: z.string().min(2).max(6).optional(),
+  phoneNumber: z.string().min(10).max(20),
+  password: z.string().min(8).max(72),
+  deviceId: z.string().min(8).max(128),
+  cosmicName: z.string().min(2).max(24).regex(/^[A-Za-z0-9 ]+$/).optional(),
+});
+
+authRouter.post('/signup', signupLimiter, async (req, res) => {
+  const parsed = signupBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'bad_body' });
+  const phone = resolvePhone(parsed.data);
+  if (!phone) return res.status(400).json({ error: 'bad_phone' });
+
+  const existing = await db.get('SELECT id FROM users WHERE phone_number = ?', [phone]);
+  if (existing) return res.status(409).json({ error: 'phone_taken' });
+
+  const id = uuid();
+  await db.run(
+    `INSERT INTO users (id, device_id, cosmic_name, avatar_seed, phone_number, password_hash, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      parsed.data.deviceId,
+      parsed.data.cosmicName ?? randomCosmicName(),
+      uuid().slice(0, 8),
+      phone,
+      hashPassword(parsed.data.password),
+      Date.now(),
+    ]
+  );
+  await seedFirstLight(id);
+  const u = await db.get('SELECT * FROM users WHERE id = ?', [id]);
+  res.json({ jwt: signJwt({ uid: id, did: parsed.data.deviceId }), user: userToWire(u) });
+});
+
+// ---- Login ----
+// New passwords must be 8+, but login accepts 6 so accounts created under the
+// older rule are not locked out of their own galaxy.
+const loginBody = z.object({
+  dialCode: z.string().min(2).max(6).optional(),
+  phoneNumber: z.string().min(10).max(20),
+  password: z.string().min(6).max(72),
+  deviceId: z.string().min(8).max(128),
+});
+
+authRouter.post('/login', authLimiter, async (req, res) => {
+  const parsed = loginBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'bad_body' });
+  const phone = resolvePhone(parsed.data);
+  if (!phone) return res.status(401).json({ error: 'bad_credentials' });
+
+  const u = (await db.get('SELECT * FROM users WHERE phone_number = ?', [phone])) as any;
+  if (!u?.password_hash) return res.status(401).json({ error: 'no_such_account' });
+  if (!verifyPassword(parsed.data.password, u.password_hash)) {
+    return res.status(401).json({ error: 'bad_credentials' });
+  }
+  await db.run('UPDATE users SET device_id = ? WHERE id = ?', [parsed.data.deviceId, u.id]);
+  res.json({ jwt: signJwt({ uid: u.id, did: parsed.data.deviceId }), user: userToWire(u) });
+});
+
+// ---- Attach credentials to a legacy anonymous account ----
+const attachBody = z.object({
+  dialCode: z.string().min(2).max(6).optional(),
+  phoneNumber: z.string().min(10).max(20),
+  password: z.string().min(8).max(72),
+});
+
+authRouter.post('/attach-phone', requireAuth, async (req, res) => {
+  const parsed = attachBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'bad_body' });
+  const { userId } = req as AuthedRequest;
+  const phone = resolvePhone(parsed.data);
+  if (!phone) return res.status(400).json({ error: 'bad_phone' });
+
+  const taken = await db.get('SELECT id FROM users WHERE phone_number = ? AND id != ?', [phone, userId]);
+  if (taken) return res.status(409).json({ error: 'phone_taken' });
+
+  await db.run('UPDATE users SET phone_number = ?, password_hash = ? WHERE id = ?', [
+    phone,
+    hashPassword(parsed.data.password),
+    userId,
+  ]);
+  res.json({ ok: true });
+});
+
 const nameBody = z.object({ name: z.string().min(2).max(24).regex(/^[A-Za-z0-9 ]+$/) });
 
 authRouter.post('/claim-name', requireAuth, async (req, res) => {

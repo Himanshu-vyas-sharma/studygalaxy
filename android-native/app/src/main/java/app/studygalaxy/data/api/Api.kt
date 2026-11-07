@@ -8,6 +8,9 @@ import retrofit2.http.Path
 
 interface Api {
     @POST("/auth/anonymous")    suspend fun anonymous(@Body req: AnonymousReq): AuthReply
+    @POST("/auth/signup")       suspend fun signup(@Body req: SignupReq): AuthReply
+    @POST("/auth/login")        suspend fun login(@Body req: LoginReq): AuthReply
+    @POST("/auth/attach-phone") suspend fun attachPhone(@Body req: AttachPhoneReq): SimpleOk
     @POST("/auth/claim-name")   suspend fun claimName(@Body req: ClaimNameReq): ClaimNameReply
     @GET("/auth/me")            suspend fun me(): User
 

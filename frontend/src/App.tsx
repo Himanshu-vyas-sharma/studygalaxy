@@ -5,6 +5,8 @@ import { useStore } from './store';
 import { api, storeToken } from './data/api';
 import { getOrCreateDeviceId } from './lib/uuid';
 import { AuthLanding } from './features/auth/AuthLanding';
+import { SignupScreen } from './features/auth/SignupScreen';
+import { LoginScreen } from './features/auth/LoginScreen';
 import { NamePicker } from './features/auth/NamePicker';
 import { HomeScreen } from './features/home/HomeScreen';
 import { TimerScreen } from './features/timer/TimerScreen';
@@ -58,7 +60,7 @@ export function App() {
           localStorage.removeItem('sg.nameClaimed');
         }
       }
-      setScreen('authLanding');
+      setScreen('signup');
     })();
   }, [setUser, setScreen]);
 
@@ -72,7 +74,7 @@ export function App() {
         setUser(user);
         setScreen('namePicker');
       } catch {
-        setScreen('authLanding');
+        setScreen('signup');
       }
     })();
   }, [screen, setUser, setScreen]);
@@ -104,6 +106,8 @@ export function App() {
             </div>
           )}
           {screen === 'authLanding' && <AuthLanding />}
+          {screen === 'signup' && <SignupScreen />}
+          {screen === 'login' && <LoginScreen />}
           {screen === 'guest' && (
             <div className="min-h-screen flex items-center justify-center">
               <motion.div

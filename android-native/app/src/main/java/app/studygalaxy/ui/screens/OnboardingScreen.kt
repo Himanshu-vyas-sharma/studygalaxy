@@ -26,21 +26,24 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.studygalaxy.ui.components.rememberNarrator
+import app.studygalaxy.ui.components.rememberSound
+import kotlinx.coroutines.CoroutineScope
 import app.studygalaxy.ui.theme.*
 import kotlinx.coroutines.delay
+import kotlin.math.sin
 
 /**
- * Voice-led setup. Vega — the guide — introduces itself, asks six questions,
+ * Voice-led setup. Galaxy — the guide — introduces itself, asks six questions,
  * then shows the student their own numbers before the app is ever used.
  *
  * The persona name and opening line are deliberately not the category-standard
  * "I'll help you stay focused on your studies": that sentence appears in half
- * the focus apps on the store. Vega opens by refusing to motivate, which sets
+ * the focus apps on the store. Galaxy opens by refusing to motivate, which sets
  * the same tone as the rest of the product.
  */
 
-/** The guide's name. One word, a real star, easy to say in any accent. */
-const val GUIDE_NAME = "Vega"
+/** The guide introduces itself as the app. */
+const val GUIDE_NAME = "Galaxy"
 
 data class OnboardingAnswers(
     val examGoal: String? = null,
@@ -52,27 +55,35 @@ data class OnboardingAnswers(
     // profile schema ignores unknown keys, so these cost nothing to send.
     val studyFrequency: String? = null,
     val phoneProblem: String? = null,
-    val screenHours: Float? = null
+    val screenHours: Float? = null,
+    val examWhen: String? = null,
+    val focusTolerance: Int? = null,
+    val studyingWith: String? = null
 ) {
     fun toJson(): String {
         val subs = topSubjects.joinToString(",") { "\"${it.replace("\"", "\\\"")}\"" }
         return """{"examGoal":${q(examGoal)},"dailyHours":${dailyHours ?: "null"},""" +
             """"topSubjects":[$subs],"studyTime":${q(studyTime)},""" +
             """"biggestDistraction":${q(biggestDistraction)},"studyFrequency":${q(studyFrequency)},""" +
-            """"phoneProblem":${q(phoneProblem)},"screenHours":${screenHours ?: "null"}}"""
+            """"phoneProblem":${q(phoneProblem)},"screenHours":${screenHours ?: "null"},""" +
+            """"examWhen":${q(examWhen)},"focusTolerance":${focusTolerance ?: "null"},""" +
+            """"studyingWith":${q(studyingWith)}}"""
     }
     private fun q(s: String?) = if (s == null) "null" else "\"$s\""
 }
 
 private data class Opt(val id: String, val label: String, val emoji: String = "", val payload: Float = 0f)
 
-private const val TOTAL_QUESTIONS = 7
+private const val TOTAL_QUESTIONS = 10
 
 @Composable
 fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
     val haptic = LocalHapticFeedback.current
     val narrator = rememberNarrator()
+    val sound = rememberSound()
+    val scope = rememberCoroutineScope()
     var step by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) { sound.startPad(scope) }
     var a by remember { mutableStateOf(OnboardingAnswers()) }
 
     val tap: () -> Unit = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
@@ -84,15 +95,14 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
         label = "progress"
     )
 
-    fun advance() { tap(); step++ }
+    fun advance() { tap(); sound.chime(scope, step); step++ }
 
     Column(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxWidth().height(3.dp).background(White5)) {
-            Box(
-                Modifier.fillMaxHeight().fillMaxWidth(progress)
-                    .background(Brush.horizontalGradient(listOf(Violet500, Fuchsia500, Amber300)))
-            )
-        }
+        ConstellationProgress(
+            answered = (step - 1).coerceIn(0, TOTAL_QUESTIONS),
+            total = TOTAL_QUESTIONS,
+            progress = progress
+        )
 
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
@@ -108,11 +118,12 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
             TextButton(
                 onClick = {
                     narrator.muted = !narrator.muted
-                    if (narrator.muted) narrator.stop()
+                    sound.muted = narrator.muted
+                    if (narrator.muted) narrator.stop() else sound.startPad(scope)
                 },
                 contentPadding = PaddingValues(horizontal = 8.dp)
             ) {
-                Text(if (narrator.muted) "🔇 Voice off" else "🔊 Voice on", color = White50, fontSize = 11.sp)
+                Text(if (narrator.muted) "🔇 Sound off" else "🔊 Sound on", color = White50, fontSize = 11.sp)
             }
             if (step in 1..TOTAL_QUESTIONS) {
                 Text("$step / $TOTAL_QUESTIONS", color = White50, fontSize = 10.sp, letterSpacing = 2.sp)
@@ -148,7 +159,8 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
                     onPick = { o ->
                         a = if (o.id == "no") a.copy(examGoal = "focus") else a
                         // Skip the "which exam" question when there is none.
-                        step = if (o.id == "no") 3 else 2
+                        sound.chime(scope, step)
+                        step = if (o.id == "no") 4 else 2
                         tap()
                     }
                 )
@@ -172,6 +184,20 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
 
                 3 -> QuestionStep(
                     narrator = { narrator.speak(it) },
+                    spoken = "How close is it?",
+                    title = "How close is it?",
+                    subtitle = "This decides how hard I push you.",
+                    options = listOf(
+                        Opt("weeks", "Weeks away", "🔥"),
+                        Opt("months_3", "Two or three months", "⏳"),
+                        Opt("months_6", "About six months", "🗓"),
+                        Opt("year_plus", "A year or more", "🌱"),
+                    ),
+                    onPick = { o -> a = a.copy(examWhen = o.id); advance() }
+                )
+
+                4 -> QuestionStep(
+                    narrator = { narrator.speak(it) },
                     spoken = "How often do you actually sit down and study? Not how often you plan to.",
                     title = "How often do you actually study?",
                     subtitle = "Not how often you plan to. How often you do.",
@@ -187,7 +213,21 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
                     }
                 )
 
-                4 -> QuestionStep(
+                5 -> QuestionStep(
+                    narrator = { narrator.speak(it) },
+                    spoken = "How long can you last before your hand reaches for your phone?",
+                    title = "How long before you reach for your phone?",
+                    subtitle = "Answer small. Your first session gets built from this, and I want you to win it.",
+                    options = listOf(
+                        Opt("t5", "About 5 minutes", "🪫", 5f),
+                        Opt("t15", "Around 15 minutes", "🔋", 15f),
+                        Opt("t30", "Half an hour", "⚡", 30f),
+                        Opt("t60", "An hour or more", "🚀", 60f),
+                    ),
+                    onPick = { o -> a = a.copy(focusTolerance = o.payload.toInt()); advance() }
+                )
+
+                6 -> QuestionStep(
                     narrator = { narrator.speak(it) },
                     spoken = "What pulls you away the most?",
                     title = "What pulls you away?",
@@ -203,7 +243,7 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
                     onPick = { o -> a = a.copy(biggestDistraction = o.id); advance() }
                 )
 
-                5 -> QuestionStep(
+                7 -> QuestionStep(
                     narrator = { narrator.speak(it) },
                     spoken = "And what does your phone actually cost you?",
                     title = "What does your phone cost you?",
@@ -217,9 +257,9 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
                     onPick = { o -> a = a.copy(phoneProblem = o.id); advance() }
                 )
 
-                6 -> QuestionStep(
+                8 -> QuestionStep(
                     narrator = { narrator.speak(it) },
-                    spoken = "Last real question. Check your screen time, then tell me the truth.",
+                    spoken = "Check your screen time, then tell me the truth.",
                     title = "Your daily screen time?",
                     subtitle = "Settings → Digital Wellbeing. I'll wait. Guessing low only cheats you.",
                     options = listOf(
@@ -232,9 +272,23 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
                     onPick = { o -> a = a.copy(screenHours = o.payload); advance() }
                 )
 
-                7 -> QuestionStep(
+                9 -> QuestionStep(
                     narrator = { narrator.speak(it) },
-                    spoken = "When does your head work best?",
+                    spoken = "Who else is doing this with you?",
+                    title = "Who else is doing this with you?",
+                    subtitle = "Studying where someone can see you changes everything.",
+                    options = listOf(
+                        Opt("alone", "Nobody. I'm on my own", "🌑"),
+                        Opt("friends_preparing", "Friends preparing for the same thing", "🤝"),
+                        Opt("classmates", "Classmates, but we don't study together", "🏫"),
+                        Opt("secret", "Nobody knows I'm trying", "🤫"),
+                    ),
+                    onPick = { o -> a = a.copy(studyingWith = o.id); advance() }
+                )
+
+                10 -> QuestionStep(
+                    narrator = { narrator.speak(it) },
+                    spoken = "Last one. When does your head work best?",
                     title = "When does your head work best?",
                     subtitle = "I'll nudge you then, and leave you alone otherwise.",
                     options = listOf(
@@ -251,7 +305,8 @@ fun OnboardingScreen(onDone: (OnboardingAnswers) -> Unit) {
                     examLabel = examPhrase(a.examGoal),
                     distractionLabel = distractionPhrase(a.biggestDistraction),
                     onSpeak = { narrator.speak(it) },
-                    onContinue = { tap(); narrator.stop(); onDone(a) }
+                    onSwell = { sound.swell(scope) },
+                    onContinue = { tap(); narrator.stop(); sound.stopPad(); onDone(a) }
                 )
             }
         }
@@ -441,5 +496,77 @@ private fun QuestionStep(
             }
         }
         Spacer(Modifier.height(28.dp))
+    }
+}
+
+/* ------------------------ Constellation progress ------------------------ */
+
+/**
+ * Replaces the progress bar. Each answered question lights a star and draws the
+ * line back to the previous one, so the student watches a constellation form as
+ * they go — the same object the whole app is about, assembling from their answers.
+ */
+@Composable
+private fun ConstellationProgress(answered: Int, total: Int, progress: Float) {
+    val lit by animateFloatAsState(
+        targetValue = answered.toFloat(),
+        animationSpec = tween(520, easing = EaseOutCubic),
+        label = "lit"
+    )
+    val twinkle = rememberInfiniteTransition(label = "tw")
+    val t by twinkle.animateFloat(
+        0f, 6.2831855f,
+        infiniteRepeatable(tween(4200, easing = LinearEasing)),
+        label = "t"
+    )
+
+    androidx.compose.foundation.Canvas(
+        Modifier.fillMaxWidth().height(46.dp).padding(horizontal = 18.dp)
+    ) {
+        val n = total
+        val stepX = size.width / (n - 1).coerceAtLeast(1)
+        // A fixed zig-zag so the shape reads as a constellation, not a ruler.
+        val offsets = floatArrayOf(0.62f, 0.3f, 0.72f, 0.38f, 0.58f, 0.26f, 0.68f, 0.44f, 0.34f, 0.6f)
+        fun pt(i: Int) = androidx.compose.ui.geometry.Offset(
+            i * stepX,
+            size.height * offsets[i % offsets.size]
+        )
+
+        // Lines between stars already earned
+        for (i in 0 until n - 1) {
+            val reach = (lit - 1 - i).coerceIn(0f, 1f)
+            if (reach <= 0f) continue
+            val a = pt(i); val b = pt(i + 1)
+            drawLine(
+                brush = Brush.horizontalGradient(listOf(Violet500, Fuchsia500)),
+                start = a,
+                end = androidx.compose.ui.geometry.Offset(
+                    a.x + (b.x - a.x) * reach,
+                    a.y + (b.y - a.y) * reach
+                ),
+                strokeWidth = 2f
+            )
+        }
+
+        repeat(n) { i ->
+            val p = pt(i)
+            val on = i < lit
+            val shimmer = 0.75f + 0.25f * sin(t + i)
+            if (on) {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Amber300.copy(alpha = 0.55f * shimmer), Color.Transparent),
+                        center = p, radius = 11f
+                    ),
+                    radius = 11f, center = p
+                )
+            }
+            drawCircle(
+                color = if (on) Color.White else White10,
+                radius = if (on) 3.4f else 2f,
+                center = p,
+                alpha = if (on) shimmer else 1f
+            )
+        }
     }
 }

@@ -4,6 +4,8 @@ import type { User } from './data/api';
 type Screen =
   | 'loading'
   | 'authLanding'
+  | 'signup'
+  | 'login'
   | 'guest'
   | 'namePicker'
   | 'home'

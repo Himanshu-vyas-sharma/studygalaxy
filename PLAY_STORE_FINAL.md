@@ -102,7 +102,7 @@ No.
 
 Click **Start** → declare:
 
-- **Personal info → Phone number**: No. StudyGalaxy has no sign-in and collects no phone number, email or password.
+- **Personal info → Phone number**: Yes — collected, stored, linked to the user, required for app functionality (it is the login identifier). Not shared with anyone.
 - **Personal info → User IDs**: Yes, collected, linked to user, required
 - **App info → App interactions**: Yes, collected, linked, required (focus sessions, streaks)
 - **App info → Other user-generated content**: Yes (notes), linked, optional
