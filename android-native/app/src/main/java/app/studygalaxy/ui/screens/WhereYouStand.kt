@@ -48,6 +48,7 @@ private fun verdictFor(daysLost: Int): String = when {
 
 @Composable
 fun WhereYouStandScreen(
+    onSpeak: (String) -> Unit = {},
     screenHoursPerDay: Float,
     examLabel: String?,
     distractionLabel: String?,
@@ -65,6 +66,7 @@ fun WhereYouStandScreen(
     val counter = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
         onSwell()
+        onSpeak("Before we begin, look at this.")
         delay(900)
         phase = 1
         counter.animateTo(
@@ -72,9 +74,18 @@ fun WhereYouStandScreen(
             animationSpec = tween(2200, easing = EaseOutCubic)
         )
         phase = 2
+        // The numbers are the user's own, so they are worth saying out loud.
+        onSpeak(
+            "At ${screenHoursPerDay.toInt()} hours a day, your phone takes about " +
+                "$hoursPerYear hours a year. That is $daysLost days. ${verdictFor(daysLost)}"
+        )
         delay(2600)
         phase = 3
         delay(900)
+        onSpeak(
+            "Take back just two hours a day and you gain $reclaimable hours. " +
+                "$reclaimDays days a year, to put somewhere that matters."
+        )
         delay(1400)
         phase = 4
     }
