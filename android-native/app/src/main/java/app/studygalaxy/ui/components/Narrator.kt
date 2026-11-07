@@ -28,32 +28,51 @@ class Narrator(context: Context) {
     var muted by mutableStateOf(false)
 
     private var pending: String? = null
+    private val appCtx = context.applicationContext
 
     init {
-        tts = TextToSpeech(context.applicationContext) { status ->
+        start(engine = null)
+    }
+
+    /**
+     * Some phones ship a TTS engine but leave `tts_default_synth` unset, and
+     * then the no-engine constructor fails and the voice is silently absent.
+     * If the default fails, try Google's engine by name before giving up.
+     */
+    private fun start(engine: String?) {
+        val listener = TextToSpeech.OnInitListener { status ->
             if (status == TextToSpeech.SUCCESS) {
-                tts?.apply {
-                    // Indian English where available: most of these students
-                    // will find it easier to follow than US English.
-                    val wanted = Locale("en", "IN")
-                    val res = setLanguage(wanted)
-                    if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
-                        setLanguage(Locale.UK)
-                    }
-                    setSpeechRate(0.96f)  // a touch slower than default reads as calm
-                    setPitch(1.0f)
-                    setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                        override fun onStart(utteranceId: String?) { speaking = true }
-                        override fun onDone(utteranceId: String?) { speaking = false }
-                        @Deprecated("deprecated in API 21")
-                        override fun onError(utteranceId: String?) { speaking = false }
-                        override fun onError(utteranceId: String?, errorCode: Int) { speaking = false }
-                    })
-                }
-                ready = true
-                pending?.let { speak(it); pending = null }
+                configure()
+            } else if (engine == null) {
+                runCatching { tts?.shutdown() }
+                tts = null
+                start(engine = GOOGLE_TTS)
             }
         }
+        tts = if (engine == null) TextToSpeech(appCtx, listener)
+        else TextToSpeech(appCtx, listener, engine)
+    }
+
+    private fun configure() {
+        tts?.apply {
+            // Indian English where available: most of these students will
+            // find it easier to follow than US English.
+            val res = setLanguage(Locale("en", "IN"))
+            if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
+                setLanguage(Locale.UK)
+            }
+            setSpeechRate(0.96f)  // a touch slower than default reads as calm
+            setPitch(1.0f)
+            setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) { speaking = true }
+                override fun onDone(utteranceId: String?) { speaking = false }
+                @Deprecated("deprecated in API 21")
+                override fun onError(utteranceId: String?) { speaking = false }
+                override fun onError(utteranceId: String?, errorCode: Int) { speaking = false }
+            })
+        }
+        ready = true
+        pending?.let { speak(it); pending = null }
     }
 
     fun speak(text: String) {
@@ -74,6 +93,8 @@ class Narrator(context: Context) {
         ready = false
         speaking = false
     }
+
+    private companion object { const val GOOGLE_TTS = "com.google.android.tts" }
 }
 
 /** Builds a Narrator tied to the composition and shuts it down on exit. */
